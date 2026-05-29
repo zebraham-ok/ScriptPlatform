@@ -32,9 +32,13 @@ export interface NodeData {
     // Plot / checkpoint fields
     sceneDescription?: string;
     conditions?: string[];
+    potentialActions?: Record<string, any>;
     boundLocations?: string[];
     boundItems?: string[];
     boundCharacters?: string[];
+    // Mechanics bindings (for character / checkpoint / item)
+    boundChecks?: string[];
+    boundVotes?: string[];
     // Generic
     customFields?: Record<string, any>;
   };
@@ -73,6 +77,29 @@ export interface CharacterParamDefinition {
   maxValue: number;
 }
 
+export interface CheckDefinition {
+  id: string;
+  name: string;
+  triggerCondition: string;
+  difficulty: number;
+  checkTarget: string;
+  description: string;
+  successEffect: string;
+  failureEffect: string;
+}
+
+export interface VoteDefinition {
+  id: string;
+  name: string;
+  options: string[];
+  participationCondition: string;
+}
+
+export interface MechanicsData {
+  checks: CheckDefinition[];
+  votes: VoteDefinition[];
+}
+
 export interface PlotData {
   initialCheckpoint: string;
   endCheckpoints: string[];
@@ -93,6 +120,7 @@ export interface ProjectData {
   locations: GraphData;
   items: GraphData;
   plot: PlotData;
+  mechanics: MechanicsData;
   aiConfig?: AIConfig;
   updatedAt?: string;
 }
@@ -103,7 +131,7 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
-export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item';
+export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item' | 'mechanics';
 
 export type SelectionType = 'node' | 'edge' | null;
 

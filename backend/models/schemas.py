@@ -52,6 +52,31 @@ class CharacterParamDefinition(BaseModel):
     maxValue: float = 10.0
 
 
+class CheckDefinition(BaseModel):
+    """检定定义：触发条件、难度、说明、成功影响、失败影响"""
+    id: str = ""
+    name: str = ""
+    triggerCondition: str = ""
+    difficulty: int = 5
+    checkTarget: str = ""  # 检定对象：指向世界观中人物数值参数的名称
+    description: str = ""
+    successEffect: str = ""
+    failureEffect: str = ""
+
+
+class VoteDefinition(BaseModel):
+    """投票定义：选项、参与条件"""
+    id: str = ""
+    name: str = ""
+    options: List[str] = Field(default_factory=list)
+    participationCondition: str = ""
+
+
+class MechanicsData(BaseModel):
+    checks: List[CheckDefinition] = Field(default_factory=list)
+    votes: List[VoteDefinition] = Field(default_factory=list)
+
+
 class AIConfig(BaseModel):
     apiKey: Optional[str] = None
     model: str = "qwen-plus"
@@ -66,6 +91,7 @@ class ProjectData(BaseModel):
     locations: GraphData = Field(default_factory=GraphData)
     items: GraphData = Field(default_factory=GraphData)
     plot: PlotData = Field(default_factory=PlotData)
+    mechanics: MechanicsData = Field(default_factory=MechanicsData)
     aiConfig: Optional[AIConfig] = None
     updatedAt: str = ""
 

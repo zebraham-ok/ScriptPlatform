@@ -53,6 +53,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
   const locationNodes = project?.locations.nodes || [];
   const itemNodes = project?.items.nodes || [];
   const characterNodes = project?.characters.nodes || [];
+  const mechanics = project?.mechanics || { checks: [], votes: [] };
 
   const selectedNode = useMemo(
     () => data.nodes.find((n) => n.id === selectedElementId),
@@ -260,6 +261,51 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
     [selectedElementId, updateNode, pageType]
   );
 
+  const handlePotentialActionAdd = useCallback(() => {
+    if (!selectedElementId) return;
+    const state = useProjectStore.getState();
+    if (!state.project) return;
+    const node = state.project.plot.graph.nodes.find((n) => n.id === selectedElementId);
+    if (!node) return;
+    const potentialActions = { ...(node.data.potentialActions || {}), '': '' };
+    updateNode(selectedElementId, {
+      data: { ...node.data, potentialActions },
+    } as any);
+  }, [selectedElementId, updateNode]);
+
+  const handlePotentialActionChange = useCallback(
+    (oldKey: string, newKey: string, newValue: any) => {
+      if (!selectedElementId) return;
+      const state = useProjectStore.getState();
+      if (!state.project) return;
+      const node = state.project.plot.graph.nodes.find((n) => n.id === selectedElementId);
+      if (!node) return;
+      const potentialActions = { ...(node.data.potentialActions || {}) };
+      delete potentialActions[oldKey];
+      potentialActions[newKey] = newValue;
+      updateNode(selectedElementId, {
+        data: { ...node.data, potentialActions },
+      } as any);
+    },
+    [selectedElementId, updateNode]
+  );
+
+  const handlePotentialActionDelete = useCallback(
+    (key: string) => {
+      if (!selectedElementId) return;
+      const state = useProjectStore.getState();
+      if (!state.project) return;
+      const node = state.project.plot.graph.nodes.find((n) => n.id === selectedElementId);
+      if (!node) return;
+      const potentialActions = { ...(node.data.potentialActions || {}) };
+      delete potentialActions[key];
+      updateNode(selectedElementId, {
+        data: { ...node.data, potentialActions },
+      } as any);
+    },
+    [selectedElementId, updateNode]
+  );
+
   const handleWorldParamChange = useCallback(
     (paramName: string, value: any) => {
       if (!selectedElementId) return;
@@ -353,6 +399,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           pageType={pageType}
           node={selectedNode}
           characterParams={project?.characterParams || []}
+          mechanics={mechanics}
           isEnd={(() => {
             const p = useProjectStore.getState().project;
             return p ? (p.plot.endCheckpoints || []).includes(selectedNode.id) : false;
@@ -370,6 +417,9 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           onCondAdd={handleConditionAdd}
           onCondChange={handleConditionChange}
           onCondDelete={handleConditionDelete}
+          onPotentialActionAdd={handlePotentialActionAdd}
+          onPotentialActionChange={handlePotentialActionChange}
+          onPotentialActionDelete={handlePotentialActionDelete}
           onWorldParamChange={handleWorldParamChange}
           locationNodes={locationNodes}
           itemNodes={itemNodes}
@@ -398,6 +448,7 @@ interface NodeEditFormProps {
   pageType: PageType;
   node: any;
   characterParams?: import('../../types').CharacterParamDefinition[];
+  mechanics?: import('../../types').MechanicsData;
   isEnd?: boolean;
   onToggleEnd?: () => void;
   isStart?: boolean;
@@ -409,6 +460,9 @@ interface NodeEditFormProps {
   onCondAdd: () => void;
   onCondChange: (index: number, value: string) => void;
   onCondDelete: (index: number) => void;
+  onPotentialActionAdd: () => void;
+  onPotentialActionChange: (oldKey: string, newKey: string, newValue: any) => void;
+  onPotentialActionDelete: (key: string) => void;
   onWorldParamChange?: (paramName: string, value: any) => void;
   locationNodes?: any[];
   itemNodes?: any[];
@@ -421,6 +475,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   pageType,
   node,
   characterParams = [],
+  mechanics = { checks: [], votes: [] },
   isEnd,
   onToggleEnd,
   isStart,
@@ -432,6 +487,9 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   onCondAdd,
   onCondChange,
   onCondDelete,
+  onPotentialActionAdd,
+  onPotentialActionChange,
+  onPotentialActionDelete,
   onWorldParamChange,
   locationNodes = [],
   itemNodes = [],
@@ -461,31 +519,39 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
     <Form layout="vertical" size="small">
       {pageType === 'character' && (
         <>
-          <Form.Item label={fieldLabel('姓名', 'name')}>
-            <Input value={node.data.name || ''} onChange={(e) => onChange('name', e.target.value)} />
-          </Form.Item>
-          <Form.Item label="性别">
-            <Select
-              value={node.data.gender || ''}
-              onChange={(v) => onChange('gender', v)}
-              allowClear
-              options={[
-                { value: '男', label: '男' },
-                { value: '女', label: '女' },
-                { value: '其他', label: '其他' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label="年龄">
-            <InputNumber
-              min={0}
-              max={200}
-              value={node.data.age}
-              onChange={(v) => onChange('age', v)}
-              style={{ width: '100%' }}
-              placeholder="年龄"
-            />
-          </Form.Item>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ flex: 3 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>{fieldLabel('姓名', 'name')}</Text>
+              <Input size="small" value={node.data.name || ''} onChange={(e) => onChange('name', e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>性别</Text>
+              <Select
+                size="small"
+                value={node.data.gender || ''}
+                onChange={(v) => onChange('gender', v)}
+                allowClear
+                style={{ width: '100%' }}
+                options={[
+                  { value: '男', label: '男' },
+                  { value: '女', label: '女' },
+                  { value: '其他', label: '其他' },
+                ]}
+              />
+            </div>
+            <div style={{ flex: 2 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>年龄</Text>
+              <InputNumber
+                size="small"
+                min={0}
+                max={200}
+                value={node.data.age}
+                onChange={(v) => onChange('age', v)}
+                style={{ width: '100%' }}
+                placeholder="年龄"
+              />
+            </div>
+          </div>
           <Form.Item label={fieldLabel('外貌', 'appearance')}>
             <TextArea rows={2} value={node.data.appearance || ''} onChange={(e) => onChange('appearance', e.target.value)} />
           </Form.Item>
@@ -516,28 +582,82 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               onChange={(e) => onChange('description', e.target.value)}
             />
           </Form.Item>
+          {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
+            <>
+              <Divider style={{ margin: '12px 0' }} />
+              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>功能绑定</Text>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {mechanics.checks.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定检定</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundChecks || []}
+                      onChange={(v) => onChange('boundChecks', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择检定"
+                      optionFilterProp="label"
+                      options={mechanics.checks.map((c) => ({
+                        value: c.id,
+                        label: `⚡ ${c.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+                {mechanics.votes.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定投票</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundVotes || []}
+                      onChange={(v) => onChange('boundVotes', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择投票"
+                      optionFilterProp="label"
+                      options={mechanics.votes.map((v) => ({
+                        value: v.id,
+                        label: `📋 ${v.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 
       {pageType === 'location' && (
         <>
-          <Form.Item label={fieldLabel('标签', 'label')}>
-            <Input value={node.label} onChange={(e) => onChange('label', e.target.value)} />
-          </Form.Item>
-          <Form.Item label="地点类型">
-            <Select
-              value={node.data.locationType || ''}
-              onChange={(v) => onChange('locationType', v)}
-              allowClear
-              options={[
-                { value: '城市', label: '城市' },
-                { value: '野外', label: '野外' },
-                { value: '建筑', label: '建筑' },
-                { value: '自然', label: '自然' },
-                { value: '其他', label: '其他' },
-              ]}
-            />
-          </Form.Item>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>{fieldLabel('标签', 'label')}</Text>
+              <Input size="small" value={node.label} onChange={(e) => onChange('label', e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>地点类型</Text>
+              <Select
+                size="small"
+                value={node.data.locationType || ''}
+                onChange={(v) => onChange('locationType', v)}
+                allowClear
+                style={{ width: '100%' }}
+                options={[
+                  { value: '城市', label: '城市' },
+                  { value: '野外', label: '野外' },
+                  { value: '建筑', label: '建筑' },
+                  { value: '自然', label: '自然' },
+                  { value: '其他', label: '其他' },
+                ]}
+              />
+            </div>
+          </div>
           <Form.Item label={fieldLabel('地貌', 'terrain')}>
             <Input value={node.data.terrain || ''} onChange={(e) => onChange('terrain', e.target.value)} />
           </Form.Item>
@@ -548,6 +668,54 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               onChange={(e) => onChange('description', e.target.value)}
             />
           </Form.Item>
+          {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
+            <>
+              <Divider style={{ margin: '12px 0' }} />
+              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>功能绑定</Text>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {mechanics.checks.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定检定</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundChecks || []}
+                      onChange={(v) => onChange('boundChecks', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择检定"
+                      optionFilterProp="label"
+                      options={mechanics.checks.map((c) => ({
+                        value: c.id,
+                        label: `⚡ ${c.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+                {mechanics.votes.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定投票</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundVotes || []}
+                      onChange={(v) => onChange('boundVotes', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择投票"
+                      optionFilterProp="label"
+                      options={mechanics.votes.map((v) => ({
+                        value: v.id,
+                        label: `📋 ${v.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -619,6 +787,54 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               ]}
             />
           </Form.Item>
+          {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
+            <>
+              <Divider style={{ margin: '12px 0' }} />
+              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>功能绑定</Text>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {mechanics.checks.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定检定</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundChecks || []}
+                      onChange={(v) => onChange('boundChecks', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择检定"
+                      optionFilterProp="label"
+                      options={mechanics.checks.map((c) => ({
+                        value: c.id,
+                        label: `⚡ ${c.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+                {mechanics.votes.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定投票</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundVotes || []}
+                      onChange={(v) => onChange('boundVotes', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择投票"
+                      optionFilterProp="label"
+                      options={mechanics.votes.map((v) => ({
+                        value: v.id,
+                        label: `📋 ${v.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -655,20 +871,28 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           <div style={{ marginBottom: 8 }}>
             <Space>
               <Text strong style={{ fontSize: 12 }}>潜在行动</Text>
-              <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onCondAdd}>
+              <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onPotentialActionAdd}>
                 添加
               </Button>
             </Space>
           </div>
-          {(node.data.conditions || []).map((cond: string, idx: number) => (
-            <div key={idx} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+          {Object.entries(node.data.potentialActions || {}).map(([key, value]: [string, any]) => (
+            <div key={key} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
               <Input
                 size="small"
-                value={cond}
-                onChange={(e) => onCondChange(idx, e.target.value)}
+                style={{ flex: 1 }}
+                value={key}
+                onChange={(e) => onPotentialActionChange(key, e.target.value, value)}
+                placeholder="行动名"
+              />
+              <Input
+                size="small"
+                style={{ flex: 2 }}
+                value={typeof value === 'string' ? value : JSON.stringify(value)}
+                onChange={(e) => onPotentialActionChange(key, key, e.target.value)}
                 placeholder="行动描述"
               />
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onCondDelete(idx)} />
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onPotentialActionDelete(key)} />
             </div>
           ))}
           <Divider style={{ margin: '12px 0' }} />
@@ -718,6 +942,54 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               }))}
             />
           </Form.Item>
+          {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
+            <>
+              <Divider style={{ margin: '12px 0' }} />
+              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>功能绑定</Text>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {mechanics.checks.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定检定</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundChecks || []}
+                      onChange={(v) => onChange('boundChecks', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择检定"
+                      optionFilterProp="label"
+                      options={mechanics.checks.map((c) => ({
+                        value: c.id,
+                        label: `⚡ ${c.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+                {mechanics.votes.length > 0 && (
+                  <div style={{ flex: 1 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>绑定投票</Text>
+                    <Select
+                      size="small"
+                      mode="multiple"
+                      value={node.data.boundVotes || []}
+                      onChange={(v) => onChange('boundVotes', v)}
+                      allowClear
+                      showSearch
+                      placeholder="选择投票"
+                      optionFilterProp="label"
+                      options={mechanics.votes.map((v) => ({
+                        value: v.id,
+                        label: `📋 ${v.name}`,
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 

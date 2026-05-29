@@ -39,6 +39,7 @@ const mapNodeType: Record<PageType, string> = {
   plot: 'checkpointNode',
   worldview: 'characterNode',
   item: 'itemNode',
+  mechanics: 'characterNode',
 };
 
 const defaultLabels: Record<PageType, string> = {
@@ -47,6 +48,7 @@ const defaultLabels: Record<PageType, string> = {
   plot: '新检查点',
   worldview: '',
   item: '新物品',
+  mechanics: '',
 };
 
 const GraphCanvas: React.FC<GraphCanvasProps> = ({ pageType }) => {

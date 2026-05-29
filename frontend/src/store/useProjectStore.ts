@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProjectData, PageType, GraphData, PlotData, WorldBlock, NodeData, EdgeData, CharacterParamDefinition } from '../types';
+import { ProjectData, PageType, GraphData, PlotData, WorldBlock, NodeData, EdgeData, CharacterParamDefinition, MechanicsData } from '../types';
 import { patchProject, getProject } from '../api';
 import { debounce } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,6 +36,9 @@ interface ProjectStore {
 
   // Actions - Character Params (from worldview)
   updateCharacterParams: (params: CharacterParamDefinition[]) => void;
+
+  // Actions - Mechanics (checks & votes)
+  updateMechanics: (data: MechanicsData) => void;
 
   // Actions - Graph (generic for characters, locations, plot)
   getGraphData: () => GraphData;
@@ -150,6 +153,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const project = get().project;
     if (!project) return;
     set({ project: { ...project, characterParams: params } });
+    get()._autoSave();
+  },
+
+  // Mechanics (checks & votes)
+  updateMechanics: (data) => {
+    const project = get().project;
+    if (!project) return;
+    set({ project: { ...project, mechanics: data } });
     get()._autoSave();
   },
 

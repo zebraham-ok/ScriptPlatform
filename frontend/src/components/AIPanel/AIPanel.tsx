@@ -25,6 +25,7 @@ const pageLabelMap: Record<PageType, string> = {
   item: '物品生成',
   worldview: '世界观构建',
   plot: '情节建议',
+  mechanics: '功能建议',
 };
 
 const AIPanel: React.FC<AIPanelProps> = () => {

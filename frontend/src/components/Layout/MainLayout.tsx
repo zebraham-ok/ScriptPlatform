@@ -7,6 +7,7 @@ import {
   BookOutlined,
   NodeIndexOutlined,
   ToolOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import { exportFullProject, exportLangGraphState, exportPythonCode } from '../../utils/export';
@@ -27,6 +28,7 @@ const tabItems = [
   { key: 'item' as PageType, label: '物品', icon: <ToolOutlined /> },
   { key: 'worldview' as PageType, label: '世界观', icon: <BookOutlined /> },
   { key: 'plot' as PageType, label: '情节树', icon: <NodeIndexOutlined /> },
+  { key: 'mechanics' as PageType, label: '功能', icon: <SettingOutlined /> },
 ];
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) => {
@@ -73,7 +75,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) =>
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Text strong style={{ fontSize: 18, whiteSpace: 'nowrap' }}>
-            剧本编辑平台
+            捕梦剧本编辑平台
           </Text>
           {project && (
             <Text type="secondary" style={{ fontSize: 14 }}>

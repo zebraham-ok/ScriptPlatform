@@ -5,7 +5,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from models.schemas import ProjectData, ProjectSummary, GraphData, PlotData, AIChatRecord, AIHistoryData
+from models.schemas import ProjectData, ProjectSummary, GraphData, PlotData, MechanicsData, AIChatRecord, AIHistoryData
 
 
 USER_ID = "user1"
@@ -37,6 +37,7 @@ def _init_empty_project(title: str, project_id: str) -> ProjectData:
         locations=GraphData(nodes=[], edges=[]),
         items=GraphData(nodes=[], edges=[]),
         plot=PlotData(initialCheckpoint="", endCheckpoints=[], graph=GraphData(nodes=[], edges=[])),
+        mechanics=MechanicsData(checks=[], votes=[]),
         updatedAt=now,
     )
 
