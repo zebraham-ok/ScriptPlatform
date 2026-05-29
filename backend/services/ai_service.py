@@ -265,19 +265,19 @@ def generate_text(
 
     errors = []
 
-    # Try OpenAI first
+    # Try Qwen first (primary)
+    try:
+        qwen_model = model if model != "gpt-4" else "qwen-plus"
+        client = _get_client("qwen")
+        return _try_generate(client, qwen_model, full_prompt, provider="qwen")
+    except Exception as e:
+        errors.append(f"Qwen: {str(e)}")
+
+    # Fallback to OpenAI
     try:
         client = _get_client("openai")
         return _try_generate(client, model, full_prompt, provider="openai")
     except Exception as e:
         errors.append(f"OpenAI: {str(e)}")
-
-    # Fallback to Qwen
-    try:
-        qwen_model = "qwen-plus"  # Qwen compatible model name
-        client = _get_client("qwen")
-        return _try_generate(client, qwen_model, full_prompt, provider="qwen")
-    except Exception as e:
-        errors.append(f"Qwen: {str(e)}")
 
     return f"[AI 生成失败] 所有 API 均不可用。\n请检查 OPENAI_API_KEY 和 QWEN_API_KEY 环境变量。\n错误信息：\n" + "\n".join(errors)

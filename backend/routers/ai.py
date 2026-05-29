@@ -23,7 +23,7 @@ async def ai_generate(body: AIGenerateRequest):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    model = project.aiConfig.model if project.aiConfig else "gpt-4"
+    model = project.aiConfig.model if project.aiConfig else "qwen-plus"
 
     # Send the ENTIRE project JSON to the AI for comprehensive context
     context = {**body.context}

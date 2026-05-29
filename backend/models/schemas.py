@@ -45,7 +45,7 @@ class PlotData(BaseModel):
 
 class AIConfig(BaseModel):
     apiKey: Optional[str] = None
-    model: str = "gpt-4"
+    model: str = "qwen-plus"
 
 
 class ProjectData(BaseModel):

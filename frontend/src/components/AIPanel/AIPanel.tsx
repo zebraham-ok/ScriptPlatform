@@ -120,7 +120,10 @@ const AIPanel: React.FC<AIPanelProps> = () => {
   }, [history.length]);
 
   const goToPrev = () => {
-    if (historyIndex > 0) {
+    if (historyIndex < 0 && history.length > 0) {
+      // At "new" page, jump to the latest history record
+      setHistoryIndex(history.length - 1);
+    } else if (historyIndex > 0) {
       setHistoryIndex(historyIndex - 1);
     }
   };
@@ -212,7 +215,7 @@ const AIPanel: React.FC<AIPanelProps> = () => {
               <Button
                 size="small"
                 icon={<LeftOutlined />}
-                disabled={historyIndex <= 0}
+                disabled={history.length === 0 || historyIndex === 0}
                 onClick={goToPrev}
               />
             </Tooltip>
