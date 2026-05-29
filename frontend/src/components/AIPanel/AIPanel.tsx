@@ -38,6 +38,36 @@ const AIPanel: React.FC<AIPanelProps> = () => {
 
   const graphData = getGraphData();
 
+  const buildContext = (): any => {
+    const context: any = {
+      current_page: currentPage,
+      selected_element_id: selectedElementId || '',
+    };
+    if (project) {
+      context.project_data = project;
+    }
+    if (graphData.nodes && selectedElementId) {
+      const selectedNode = graphData.nodes.find((n) => n.id === selectedElementId);
+      if (selectedNode) {
+        const connectedEdges = graphData.edges.filter(
+          (e) => e.source === selectedElementId || e.target === selectedElementId
+        );
+        const nearbyIds = new Set<string>();
+        connectedEdges.forEach((e) => {
+          nearbyIds.add(e.source);
+          nearbyIds.add(e.target);
+        });
+        nearbyIds.delete(selectedElementId);
+        const nearbyNodes = graphData.nodes.filter((n) => nearbyIds.has(n.id));
+        context.nearby_elements = [
+          { role: 'selected', ...selectedNode },
+          ...nearbyNodes,
+        ];
+      }
+    }
+    return context;
+  };
+
   // Load history when panel opens or project changes
   const loadHistory = useCallback(async () => {
     if (!project) return;
@@ -68,42 +98,12 @@ const AIPanel: React.FC<AIPanelProps> = () => {
     if (!project) return;
 
     setLoading(true);
-
-    const context: any = {
-      current_page: currentPage,
-      selected_element_id: selectedElementId || '',
-    };
-
-    if (project) {
-      context.project_data = project;
-    }
-
-    if (graphData.nodes && selectedElementId) {
-      const selectedNode = graphData.nodes.find((n) => n.id === selectedElementId);
-      if (selectedNode) {
-        const connectedEdges = graphData.edges.filter(
-          (e) => e.source === selectedElementId || e.target === selectedElementId
-        );
-        const nearbyIds = new Set<string>();
-        connectedEdges.forEach((e) => {
-          nearbyIds.add(e.source);
-          nearbyIds.add(e.target);
-        });
-        nearbyIds.delete(selectedElementId);
-        const nearbyNodes = graphData.nodes.filter((n) => nearbyIds.has(n.id));
-        context.nearby_elements = [
-          { role: 'selected', ...selectedNode },
-          ...nearbyNodes,
-        ];
-      }
-    }
+    const context = buildContext();
 
     try {
       await aiGenerate(project.projectId, context, instruction, template || undefined);
-      // Reload full history from backend to get the record with server-generated ID
       await loadHistory();
-      // Point to the newest record
-      setHistoryIndex(-1);  // will be updated below after history reloads
+      setHistoryIndex(-1);
     } catch (e: any) {
       message.error('生成失败：' + (e?.message || '未知错误'));
     } finally {
@@ -111,10 +111,9 @@ const AIPanel: React.FC<AIPanelProps> = () => {
     }
   };
 
-  // After history loads from handleGenerate, point to newest
+  // After history loads, point to newest
   useEffect(() => {
     if (history.length > 0 && historyIndex === -1 && !loading) {
-      // After a new generation + reload, jump to newest
       setHistoryIndex(history.length - 1);
     }
   }, [history.length]);
@@ -187,14 +186,14 @@ const AIPanel: React.FC<AIPanelProps> = () => {
             </div>
 
             <Button
-              type="primary"
-              icon={<SendOutlined />}
-              onClick={handleGenerate}
-              loading={loading}
-              block
-            >
-              生成
-            </Button>
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={handleGenerate}
+                loading={loading}
+                block
+              >
+                生成
+              </Button>
           </>
         )}
 

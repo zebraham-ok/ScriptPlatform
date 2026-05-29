@@ -46,7 +46,7 @@ def list_projects() -> List[ProjectSummary]:
     user_dir = _ensure_user_dir()
     projects = []
     for filename in os.listdir(user_dir):
-        if filename.endswith(".json") and not filename.endswith("_history.json"):
+        if filename.endswith(".json") and "backup" not in filename and not filename.endswith("_history.json"):
             try:
                 with open(os.path.join(user_dir, filename), "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -97,7 +97,7 @@ def delete_project(project_id: str) -> bool:
 
 
 def patch_project(project_id: str, updates: dict) -> Optional[ProjectData]:
-    """Partial update of a project."""
+    """Partial update of a project. Validates BEFORE writing to disk to prevent data corruption."""
     project = get_project(project_id)
     if project is None:
         return None
@@ -114,11 +114,14 @@ def patch_project(project_id: str, updates: dict) -> Optional[ProjectData]:
     _deep_update(project_dict, updates)
     project_dict["updatedAt"] = datetime.now().isoformat()
 
+    # Validate BEFORE writing to disk — prevents corrupting the file
+    validated = ProjectData(**project_dict)
+
     path = _project_path(project_id)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(project_dict, f, ensure_ascii=False, indent=2)
+        json.dump(validated.model_dump(), f, ensure_ascii=False, indent=2)
 
-    return ProjectData(**project_dict)
+    return validated
 
 
 # --- AI Chat History ---
@@ -135,12 +138,39 @@ def load_ai_history(project_id: str) -> AIHistoryData:
 
 
 def save_ai_record(project_id: str, record: AIChatRecord):
-    """Append a new AI chat record to history."""
+    """Append a new AI chat record to history. Uses file-level append to avoid loading the entire history."""
     path = _history_path(project_id)
-    history = load_ai_history(project_id)
-    history.records.append(record)
+    record_json = json.dumps(record.model_dump(), ensure_ascii=False, indent=2)
+    # Indent each line of the record to match the array nesting
+    indented_record = "\n    ".join(record_json.split("\n"))
+
+    if not os.path.exists(path):
+        # Create new history file
+        content = '{\n  "records": [\n    ' + indented_record + '\n  ]\n}'
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return
+
+    # Read existing file and insert new record before closing bracket
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Find the last ']' that closes the records array
+    # Strategy: find the last occurrence of '\n  ]' (end of records array with proper indent)
+    close_marker = "\n  ]"
+    last_close = content.rfind(close_marker)
+    if last_close == -1:
+        # Fallback: load full file and rewrite (only if file structure is unexpected)
+        history = load_ai_history(project_id)
+        history.records.append(record)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(history.model_dump(), f, ensure_ascii=False, indent=2)
+        return
+
+    # Insert new record: content before close_marker + ",\n    " + indented_record + close_marker + rest
+    new_content = content[:last_close] + ",\n    " + indented_record + content[last_close:]
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(history.model_dump(), f, ensure_ascii=False, indent=2)
+        f.write(new_content)
 
 
 def delete_ai_history(project_id: str) -> bool:
@@ -150,3 +180,35 @@ def delete_ai_history(project_id: str) -> bool:
         return False
     os.remove(path)
     return True
+
+
+# --- Project Backup (for AI modify undo) ---
+
+def _backup_path(project_id: str) -> str:
+    return os.path.join(_ensure_user_dir(), f"{project_id}_backup.json")
+
+
+def backup_project(project_id: str) -> bool:
+    """Create a backup of the current project JSON before AI modification."""
+    src = _project_path(project_id)
+    if not os.path.exists(src):
+        return False
+    import shutil
+    shutil.copy2(src, _backup_path(project_id))
+    return True
+
+
+def has_backup(project_id: str) -> bool:
+    """Check if a backup exists for this project."""
+    return os.path.exists(_backup_path(project_id))
+
+
+def restore_backup(project_id: str) -> Optional[ProjectData]:
+    """Restore project from backup. Returns the restored project data or None."""
+    backup = _backup_path(project_id)
+    if not os.path.exists(backup):
+        return None
+    import shutil
+    shutil.copy2(backup, _project_path(project_id))
+    os.remove(backup)
+    return get_project(project_id)

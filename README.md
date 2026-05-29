@@ -132,7 +132,7 @@ npm start
 |---|---|---|
 | **图编辑画布** | `GraphCanvas.tsx` | 基于 React Flow 封装的通用画布，支持节点拖拽、连线、吸附网格、缩放，通过 `onNodeClick`/`onEdgeClick`/`onPaneClick` 精确控制选中状态 |
 | **自定义节点** | `CustomCharacterNode.tsx`<br>`CustomLocationNode.tsx`<br>`CustomCheckpointNode.tsx` | 人物节点（显示姓名 + 别名）、地点节点（显示名称 + 类型）、情节节点（显示标题 + 序号），起始检查点带绿色标识 |
-| **详情面板** | `DetailPanel.tsx` | 根据选中元素类型渲染对应表单：人物→名称/性别/外貌/性格；地点→类型/描述/地貌；边→关系标签/权重；情节→场景描述/达成条件/触发事件/条件逻辑 |
+| **详情面板** | `DetailPanel.tsx` | 根据选中元素类型渲染对应表单：人物→姓名/性别/年龄/外貌/性格/核心动机/初始位置/描述；地点→标签/类型/地貌/描述；物品→名称/外观/功能/获得方式/初始所在；边→关系/描述/条件。每个文本字段右侧有 AI 填充按钮 |
 | **AI 面板** | `AIPanel.tsx` | 右侧抽屉，输入指令调用后端 OpenAI API，根据当前页面类型自动拼接上下文生成内容 |
 | **顶部工具栏** | `MainLayout.tsx` | 项目列表切换、四个编辑页面 Tab（人物/地点/世界观/情节树）、导出按钮 |
 | **全局 Store** | `useProjectStore.ts` | Zustand store，管理项目数据（nodes/edges/worldBlocks/plotData）、选中状态，并内建 debounce 2 秒自动保存到后端 |
@@ -143,8 +143,8 @@ npm start
 | 模块 | 文件 | 功能 |
 |---|---|---|
 | **项目 CRUD** | `routers/projects.py` | 创建/查询/更新/删除/列出项目，支持按用户隔离 |
-| **AI 生成** | `routers/ai.py` | 接收前端指令 + 当前页面上下文，调用 `ai_service.py` 生成内容 |
-| **AI 服务** | `services/ai_service.py` | 封装 OpenAI 调用，内置四种 Prompt 模板（角色和关系 / 地点 / 情节 / 世界观） |
+| **AI 生成** | `routers/ai.py` | 接收前端指令 + 当前页面上下文，调用 `ai_service.py` 生成内容；还提供字段级 AI 填充（`fill-field`）端点 |
+| **AI 服务** | `services/ai_service.py` | 封装 OpenAI/Qwen 调用，内置 Prompt 模板（角色/地点/情节/世界观/字段填充），支持 JSON 模式输出 |
 | **文件存储** | `services/file_store.py` | 按 `projects/{user_id}/{project_id}.json` 路径读写 JSON |
 | **数据模型** | `models/schemas.py` | Pydantic 模型定义（ProjectData, NodeData, EdgeData, GraphData, WorldBlock, PlotData 等） |
 
@@ -196,7 +196,15 @@ npm start
 - 系统会根据当前 Tab 自动拼接合适的前缀上下文
 - 生成结果后可直接复制使用
 
-### 7. 导出
+### 7. AI 字段填充
+
+- 在详情编辑面板中，每个文本属性右侧都有一个 🤖 AI 按钮
+- 点击按钮后，后台会将完整项目 JSON 发送给 AI（qwen-plus），AI 根据项目上下文智能填充该字段
+- 如果字段已有内容（如尚未充实成句子的关键词），AI 会在现有内容基础上进行扩充和润色
+- AI 响应期间显示 loading 动画，不影响创作者的其它正常操作
+- AI 返回的分析过程仅打印到浏览器控制台，不显示在页面上
+
+### 8. 导出
 
 点击顶部「导出」按钮，支持三种格式：
 
@@ -204,7 +212,7 @@ npm start
 - **导出 LangGraph State**：去除 UI 字段的结构化数据，适用于下游 Pipeline
 - **导出 Python 代码**：生成 `initial_state = {...}` Python 初始化代码
 
-### 8. 自动保存
+### 9. 自动保存
 
 编辑操作后约 2 秒自动保存到后端，无需手动操作。
 
@@ -220,6 +228,10 @@ npm start
 | `PATCH` | `/api/projects/{id}` | 更新项目 |
 | `DELETE` | `/api/projects/{id}` | 删除项目 |
 | `POST` | `/api/ai/generate` | AI 生成内容 |
+| `GET` | `/api/ai/history/{id}` | 获取项目 AI 聊天历史 |
+| `POST` | `/api/ai/modify` | AI 直接修改项目 JSON |
+| `POST` | `/api/ai/undo/{id}` | 撤销上一次 AI 修改 |
+| `POST` | `/api/ai/fill-field` | AI 填充单个字段（返回 analysis + content） |
 
 ---
 

@@ -1,7 +1,8 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   Form,
   Input,
+  InputNumber,
   Select,
   Button,
   Divider,
@@ -12,9 +13,10 @@ import {
   Typography,
   Switch,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, RobotOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, RobotOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import type { PageType } from '../../types';
+import { aiFillField } from '../../api';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -32,6 +34,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
     selectedElementId,
     selectedElementType,
     toggleEndCheckpoint,
+    setInitialCheckpoint,
   } = useProjectStore();
 
   // Subscribe to graph data reactively via Zustand selector
@@ -261,6 +264,37 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
     setShowAI(true);
   }, [setShowAI]);
 
+  // --- AI field fill ---
+  const [aiLoadingFields, setAiLoadingFields] = useState<Set<string>>(new Set());
+
+  const handleAIFill = useCallback(
+    async (fieldName: string, existingContent: string) => {
+      const projectId = useProjectStore.getState().project?.projectId;
+      if (!projectId || !selectedElementId) return;
+
+      setAiLoadingFields((prev) => new Set(prev).add(fieldName));
+      try {
+        const res = await aiFillField({
+          project_id: projectId,
+          field_name: fieldName,
+          existing_content: existingContent || '',
+          node_type: pageType,
+        });
+        console.log(`[AI 分析] ${fieldName}:`, res.analysis);
+        handleFieldChange(fieldName, res.content);
+      } catch (e) {
+        console.error(`[AI 填充失败] ${fieldName}:`, e);
+      } finally {
+        setAiLoadingFields((prev) => {
+          const next = new Set(prev);
+          next.delete(fieldName);
+          return next;
+        });
+      }
+    },
+    [selectedElementId, pageType, handleFieldChange]
+  );
+
   if (!selectedElementId) {
     return (
       <div style={{ padding: 16, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -299,6 +333,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
             return p ? (p.plot.endCheckpoints || []).includes(selectedNode.id) : false;
           })()}
           onToggleEnd={() => selectedElementId && toggleEndCheckpoint(selectedElementId)}
+          isStart={(() => {
+            const p = useProjectStore.getState().project;
+            return p ? p.plot.initialCheckpoint === selectedNode.id : false;
+          })()}
+          onSetStart={() => selectedElementId && setInitialCheckpoint(selectedElementId)}
           onChange={handleFieldChange}
           onAttrAdd={handleAttributeAdd}
           onAttrChange={handleAttributeChange}
@@ -309,6 +348,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           locationNodes={locationNodes}
           itemNodes={itemNodes}
           characterNodes={characterNodes}
+          onAIFill={handleAIFill}
+          aiLoadingFields={aiLoadingFields}
         />
       )}
 
@@ -317,6 +358,8 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           pageType={pageType}
           edge={selectedEdge}
           onChange={handleFieldChange}
+          onAIFill={handleAIFill}
+          aiLoadingFields={aiLoadingFields}
         />
       )}
     </div>
@@ -330,6 +373,8 @@ interface NodeEditFormProps {
   node: any;
   isEnd?: boolean;
   onToggleEnd?: () => void;
+  isStart?: boolean;
+  onSetStart?: () => void;
   onChange: (field: string, value: any) => void;
   onAttrAdd: () => void;
   onAttrChange: (oldKey: string, newKey: string, newValue: any) => void;
@@ -340,6 +385,8 @@ interface NodeEditFormProps {
   locationNodes?: any[];
   itemNodes?: any[];
   characterNodes?: any[];
+  onAIFill?: (fieldName: string, existingContent: string) => void;
+  aiLoadingFields?: Set<string>;
 }
 
 const NodeEditForm: React.FC<NodeEditFormProps> = ({
@@ -347,6 +394,8 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   node,
   isEnd,
   onToggleEnd,
+  isStart,
+  onSetStart,
   onChange,
   onAttrAdd,
   onAttrChange,
@@ -357,12 +406,32 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   locationNodes = [],
   itemNodes = [],
   characterNodes = [],
+  onAIFill,
+  aiLoadingFields = new Set(),
 }) => {
+  const fieldLabel = (text: string, fieldName: string) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span>{text}</span>
+      <Button
+        size="small"
+        type="text"
+        icon={aiLoadingFields.has(fieldName) ? <LoadingOutlined spin /> : <RobotOutlined />}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const existing = String(node.data?.[fieldName] || '');
+          onAIFill?.(fieldName, existing);
+        }}
+        style={{ padding: 0, fontSize: 12, color: '#8c8c8c', height: 18, minWidth: 18, lineHeight: 1 }}
+      />
+    </span>
+  );
+
   return (
     <Form layout="vertical" size="small">
       {pageType === 'character' && (
         <>
-          <Form.Item label="姓名">
+          <Form.Item label={fieldLabel('姓名', 'name')}>
             <Input value={node.data.name || ''} onChange={(e) => onChange('name', e.target.value)} />
           </Form.Item>
           <Form.Item label="性别">
@@ -377,11 +446,24 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               ]}
             />
           </Form.Item>
-          <Form.Item label="外貌">
+          <Form.Item label="年龄">
+            <InputNumber
+              min={0}
+              max={200}
+              value={node.data.age}
+              onChange={(v) => onChange('age', v)}
+              style={{ width: '100%' }}
+              placeholder="年龄"
+            />
+          </Form.Item>
+          <Form.Item label={fieldLabel('外貌', 'appearance')}>
             <TextArea rows={2} value={node.data.appearance || ''} onChange={(e) => onChange('appearance', e.target.value)} />
           </Form.Item>
-          <Form.Item label="性格">
+          <Form.Item label={fieldLabel('性格', 'personality')}>
             <TextArea rows={2} value={node.data.personality || ''} onChange={(e) => onChange('personality', e.target.value)} />
+          </Form.Item>
+          <Form.Item label={fieldLabel('核心动机', 'motivation')}>
+            <TextArea rows={2} value={node.data.motivation || ''} onChange={(e) => onChange('motivation', e.target.value)} />
           </Form.Item>
           <Form.Item label="初始位置">
             <Select
@@ -397,7 +479,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               }))}
             />
           </Form.Item>
-          <Form.Item label="描述">
+          <Form.Item label={fieldLabel('描述', 'description')}>
             <TextArea
               rows={2}
               value={node.data.description || ''}
@@ -409,7 +491,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
 
       {pageType === 'location' && (
         <>
-          <Form.Item label="标签">
+          <Form.Item label={fieldLabel('标签', 'label')}>
             <Input value={node.label} onChange={(e) => onChange('label', e.target.value)} />
           </Form.Item>
           <Form.Item label="地点类型">
@@ -426,10 +508,10 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               ]}
             />
           </Form.Item>
-          <Form.Item label="地貌">
+          <Form.Item label={fieldLabel('地貌', 'terrain')}>
             <Input value={node.data.terrain || ''} onChange={(e) => onChange('terrain', e.target.value)} />
           </Form.Item>
-          <Form.Item label="描述">
+          <Form.Item label={fieldLabel('描述', 'description')}>
             <TextArea
               rows={2}
               value={node.data.description || ''}
@@ -441,24 +523,24 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
 
       {pageType === 'item' && (
         <>
-          <Form.Item label="物品名称">
+          <Form.Item label={fieldLabel('物品名称', 'label')}>
             <Input value={node.label} onChange={(e) => onChange('label', e.target.value)} />
           </Form.Item>
-          <Form.Item label="外观">
+          <Form.Item label={fieldLabel('外观', 'appearance')}>
             <TextArea
               rows={2}
               value={node.data.appearance || ''}
               onChange={(e) => onChange('appearance', e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="功能">
+          <Form.Item label={fieldLabel('功能', 'function')}>
             <TextArea
               rows={2}
               value={node.data.function || ''}
               onChange={(e) => onChange('function', e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="获得方式">
+          <Form.Item label={fieldLabel('获得方式', 'acquisitionMethod')}>
             <TextArea
               rows={2}
               value={node.data.acquisitionMethod || ''}
@@ -512,20 +594,27 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
 
       {pageType === 'plot' && (
         <>
-          <Form.Item label="情节名称">
+          <Form.Item label={fieldLabel('情节名称', 'label')}>
             <Input value={node.label} onChange={(e) => onChange('label', e.target.value)} />
           </Form.Item>
-          <Form.Item label="设为结局">
-            <Switch checked={isEnd} onChange={onToggleEnd} />
-          </Form.Item>
-          <Form.Item label="告知玩家的信息">
+          <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 12 }}>设为结局</Text>
+              <Switch checked={isEnd} onChange={onToggleEnd} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 12 }}>设为起始</Text>
+              <Switch checked={isStart} onChange={onSetStart} />
+            </div>
+          </div>
+          <Form.Item label={fieldLabel('告知玩家的信息', 'sceneDescription')}>
             <TextArea
               rows={3}
               value={node.data.sceneDescription || ''}
               onChange={(e) => onChange('sceneDescription', e.target.value)}
             />
           </Form.Item>
-          <Form.Item label="不告知玩家的信息">
+          <Form.Item label={fieldLabel('不告知玩家的信息', 'description')}>
             <TextArea
               rows={3}
               value={node.data.description || ''}
@@ -642,13 +731,33 @@ interface EdgeEditFormProps {
   pageType: PageType;
   edge: any;
   onChange: (field: string, value: any) => void;
+  onAIFill?: (fieldName: string, existingContent: string) => void;
+  aiLoadingFields?: Set<string>;
 }
 
-const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange }) => {
+const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange, onAIFill, aiLoadingFields = new Set() }) => {
+  const fieldLabel = (text: string, fieldName: string) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span>{text}</span>
+      <Button
+        size="small"
+        type="text"
+        icon={aiLoadingFields.has(fieldName) ? <LoadingOutlined spin /> : <RobotOutlined />}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const existing = String(edge.data?.[fieldName] || '');
+          onAIFill?.(fieldName, existing);
+        }}
+        style={{ padding: 0, fontSize: 12, color: '#8c8c8c', height: 18, minWidth: 18, lineHeight: 1 }}
+      />
+    </span>
+  );
+
   return (
     <Form layout="vertical" size="small">
       {pageType === 'item' && (
-        <Form.Item label="关联标签">
+        <Form.Item label={fieldLabel('关联标签', 'label')}>
           <Input value={edge.label || ''} onChange={(e) => onChange('label', e.target.value)} />
         </Form.Item>
       )}
@@ -679,14 +788,14 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange })
       )}
 
       {pageType === 'plot' && (
-        <Form.Item label="转化名称">
+        <Form.Item label={fieldLabel('转化名称', 'label')}>
           <Input value={edge.label || ''} onChange={(e) => onChange('label', e.target.value)} />
         </Form.Item>
       )}
 
       {pageType === 'plot' && (
         <>
-          <Form.Item label="触发条件">
+          <Form.Item label={fieldLabel('触发条件', 'conditionLogic')}>
             <TextArea
               rows={2}
               value={edge.data?.conditionLogic || ''}
@@ -694,7 +803,7 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange })
               placeholder='例如：has_item("地图") && completed("任务1")'
             />
           </Form.Item>
-          <Form.Item label="备注">
+          <Form.Item label={fieldLabel('备注', 'description')}>
             <TextArea
               rows={2}
               value={edge.data?.description || ''}
@@ -705,7 +814,7 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange })
       )}
 
       {pageType !== 'plot' && (
-        <Form.Item label="描述">
+        <Form.Item label={fieldLabel('描述', 'description')}>
           <TextArea
             rows={2}
             value={edge.data?.description || ''}

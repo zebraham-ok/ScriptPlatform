@@ -60,4 +60,14 @@ export async function getAIHistory(projectId: string) {
   return res.data; // { records: AIChatRecord[] }
 }
 
+export async function aiFillField(data: {
+  project_id: string;
+  field_name: string;
+  existing_content: string;
+  node_type: string;
+}) {
+  const res = await api.post('/ai/fill-field', data);
+  return res.data; // { content: string, analysis: string }
+}
+
 export default api;

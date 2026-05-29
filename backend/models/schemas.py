@@ -97,3 +97,34 @@ class AIHistoryData(BaseModel):
 
 class AIHistoryResponse(BaseModel):
     records: List[AIChatRecord]
+
+
+class AIModifyRequest(BaseModel):
+    project_id: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+    instruction: str = ""
+
+
+class AIModifyResponse(BaseModel):
+    success: bool
+    modified_project: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    has_backup: bool = False
+
+
+class AIUndoResponse(BaseModel):
+    success: bool
+    restored_project: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class AIFillFieldRequest(BaseModel):
+    project_id: str
+    field_name: str
+    existing_content: str = ""
+    node_type: str = ""
+
+
+class AIFillFieldResponse(BaseModel):
+    content: str
+    analysis: str = ""

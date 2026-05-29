@@ -15,8 +15,10 @@ export interface NodeData {
     name?: string;
     aliases?: string[];
     gender?: string;
+    age?: number;
     appearance?: string;
     personality?: string;
+    motivation?: string;
     initialLocation?: string;
     attributes?: Record<string, any>;
     description?: string;
@@ -94,3 +96,15 @@ export interface ProjectSummary {
 export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item';
 
 export type SelectionType = 'node' | 'edge' | null;
+
+export interface AIFillFieldRequest {
+  project_id: string;
+  field_name: string;
+  existing_content: string;
+  node_type: string;
+}
+
+export interface AIFillFieldResponse {
+  content: string;
+  analysis: string;
+}
