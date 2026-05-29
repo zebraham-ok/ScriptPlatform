@@ -36,6 +36,8 @@ export interface NodeData {
     boundLocations?: string[];
     boundItems?: string[];
     boundCharacters?: string[];
+    triggerConditions?: string[];  // "character:id" | "location:id" | "item:id" | "check:id" | "vote:id"
+    associatedObjects?: { id: string; relationDescription: string }[];
     // Mechanics bindings (for character / checkpoint / item)
     boundChecks?: string[];
     boundVotes?: string[];

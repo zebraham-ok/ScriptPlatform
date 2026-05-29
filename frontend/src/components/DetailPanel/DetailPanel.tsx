@@ -1,9 +1,10 @@
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import {
   Form,
   Input,
   InputNumber,
   Select,
+  Slider,
   Button,
   Divider,
   Empty,
@@ -515,6 +516,33 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
     </span>
   );
 
+  // --- Associated objects (plot only) ---
+  const [newAssoc, setNewAssoc] = useState<{ id: string; desc: string }>({ id: '', desc: '' });
+
+  useEffect(() => {
+    setNewAssoc({ id: '', desc: '' });
+  }, [node.id]);
+
+  const handleAssocChange = (index: number, id: string, desc: string) => {
+    const objects = [...(node.data.associatedObjects || [])];
+    objects[index] = { id, relationDescription: desc };
+    onChange('associatedObjects', objects);
+  };
+
+  const handleAssocDelete = (index: number) => {
+    const objects = (node.data.associatedObjects || []).filter((_: any, i: number) => i !== index);
+    onChange('associatedObjects', objects);
+  };
+
+  const handleNewAssocUpdate = (id: string, desc: string) => {
+    setNewAssoc({ id, desc });
+    if (id && desc) {
+      const objects = [...(node.data.associatedObjects || []), { id, relationDescription: desc }];
+      onChange('associatedObjects', objects);
+      setNewAssoc({ id: '', desc: '' });
+    }
+  };
+
   return (
     <Form layout="vertical" size="small">
       {pageType === 'character' && (
@@ -553,13 +581,13 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
             </div>
           </div>
           <Form.Item label={fieldLabel('外貌', 'appearance')}>
-            <TextArea rows={2} value={node.data.appearance || ''} onChange={(e) => onChange('appearance', e.target.value)} />
+            <TextArea autoSize={{ minRows: 2, maxRows: 8 }} value={node.data.appearance || ''} onChange={(e) => onChange('appearance', e.target.value)} />
           </Form.Item>
           <Form.Item label={fieldLabel('性格', 'personality')}>
-            <TextArea rows={2} value={node.data.personality || ''} onChange={(e) => onChange('personality', e.target.value)} />
+            <TextArea autoSize={{ minRows: 2, maxRows: 8 }} value={node.data.personality || ''} onChange={(e) => onChange('personality', e.target.value)} />
           </Form.Item>
           <Form.Item label={fieldLabel('核心动机', 'motivation')}>
-            <TextArea rows={2} value={node.data.motivation || ''} onChange={(e) => onChange('motivation', e.target.value)} />
+            <TextArea autoSize={{ minRows: 2, maxRows: 8 }} value={node.data.motivation || ''} onChange={(e) => onChange('motivation', e.target.value)} />
           </Form.Item>
           <Form.Item label="初始位置">
             <Select
@@ -577,7 +605,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           </Form.Item>
           <Form.Item label={fieldLabel('描述', 'description')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={node.data.description || ''}
               onChange={(e) => onChange('description', e.target.value)}
             />
@@ -663,7 +691,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           </Form.Item>
           <Form.Item label={fieldLabel('描述', 'description')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={node.data.description || ''}
               onChange={(e) => onChange('description', e.target.value)}
             />
@@ -726,21 +754,21 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           </Form.Item>
           <Form.Item label={fieldLabel('外观', 'appearance')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={node.data.appearance || ''}
               onChange={(e) => onChange('appearance', e.target.value)}
             />
           </Form.Item>
           <Form.Item label={fieldLabel('功能', 'function')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={node.data.function || ''}
               onChange={(e) => onChange('function', e.target.value)}
             />
           </Form.Item>
           <Form.Item label={fieldLabel('获得方式', 'acquisitionMethod')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={node.data.acquisitionMethod || ''}
               onChange={(e) => onChange('acquisitionMethod', e.target.value)}
             />
@@ -855,14 +883,14 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           </div>
           <Form.Item label={fieldLabel('告知玩家的信息', 'sceneDescription')}>
             <TextArea
-              rows={3}
+              autoSize={{ minRows: 3, maxRows: 10 }}
               value={node.data.sceneDescription || ''}
               onChange={(e) => onChange('sceneDescription', e.target.value)}
             />
           </Form.Item>
           <Form.Item label={fieldLabel('不告知玩家的信息', 'description')}>
             <TextArea
-              rows={3}
+              autoSize={{ minRows: 3, maxRows: 10 }}
               value={node.data.description || ''}
               onChange={(e) => onChange('description', e.target.value)}
             />
@@ -897,51 +925,96 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           ))}
           <Divider style={{ margin: '12px 0' }} />
           <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>事件绑定</Text>
-          <Form.Item label="触发地点">
-            <Select
-              mode="multiple"
-              value={node.data.boundLocations || []}
-              onChange={(v) => onChange('boundLocations', v)}
-              allowClear
-              showSearch
-              placeholder="选择地点"
-              optionFilterProp="label"
-              options={locationNodes.map((n: any) => ({
-                value: n.id,
-                label: n.label,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="触发物品">
-            <Select
-              mode="multiple"
-              value={node.data.boundItems || []}
-              onChange={(v) => onChange('boundItems', v)}
-              allowClear
-              showSearch
-              placeholder="选择物品"
-              optionFilterProp="label"
-              options={itemNodes.map((n: any) => ({
-                value: n.id,
-                label: n.label,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="触发人物">
-            <Select
-              mode="multiple"
-              value={node.data.boundCharacters || []}
-              onChange={(v) => onChange('boundCharacters', v)}
-              allowClear
-              showSearch
-              placeholder="选择人物"
-              optionFilterProp="label"
-              options={characterNodes.map((n: any) => ({
-                value: n.id,
-                label: n.data?.name || n.label,
-              }))}
-            />
-          </Form.Item>
+          <Text type="secondary" style={{ fontSize: 12 }}>触发条件</Text>
+          <Select
+            mode="multiple"
+            value={node.data.triggerConditions || []}
+            onChange={(v) => onChange('triggerConditions', v)}
+            allowClear
+            showSearch
+            placeholder="选择触发该情节的人物、地点或物品"
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            options={[
+              { label: '人物', options: characterNodes.map((n: any) => ({ value: `character:${n.id}`, label: `👤 ${n.data?.name || n.label}` })) },
+              { label: '地点', options: locationNodes.map((n: any) => ({ value: `location:${n.id}`, label: `📍 ${n.label}` })) },
+              { label: '物品', options: itemNodes.map((n: any) => ({ value: `item:${n.id}`, label: `📦 ${n.label}` })) },
+              { label: '功能', options: [
+                ...mechanics.checks.map((c) => ({ value: `check:${c.id}`, label: `⚡ ${c.name}` })),
+                ...mechanics.votes.map((v) => ({ value: `vote:${v.id}`, label: `📋 ${v.name}` })),
+              ]},
+            ]}
+          />
+          <div style={{ height: 12 }} />
+          <Text type="secondary" style={{ fontSize: 12 }}>关联对象</Text>
+          {(node.data.associatedObjects || []).map((obj: any, idx: number) => (
+            <div key={`assoc-${idx}`} style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <Select
+                  size="small"
+                  value={obj.id || undefined}
+                  onChange={(v) => handleAssocChange(idx, v || '', obj.relationDescription)}
+                  allowClear
+                  showSearch
+                  placeholder="选择对象"
+                  optionFilterProp="label"
+                  style={{ width: '100%' }}
+                  options={[
+                    { label: '人物', options: characterNodes.map((n: any) => ({ value: `character:${n.id}`, label: `👤 ${n.data?.name || n.label}` })) },
+                    { label: '地点', options: locationNodes.map((n: any) => ({ value: `location:${n.id}`, label: `📍 ${n.label}` })) },
+                    { label: '物品', options: itemNodes.map((n: any) => ({ value: `item:${n.id}`, label: `📦 ${n.label}` })) },
+                    { label: '功能', options: [
+                      ...mechanics.checks.map((c) => ({ value: `check:${c.id}`, label: `⚡ ${c.name}` })),
+                      ...mechanics.votes.map((v) => ({ value: `vote:${v.id}`, label: `📋 ${v.name}` })),
+                    ]},
+                  ]}
+                />
+              </div>
+              <div style={{ flex: 2 }}>
+                <Input
+                  size="small"
+                  value={obj.relationDescription}
+                  onChange={(e) => handleAssocChange(idx, obj.id, e.target.value)}
+                  placeholder="关联原因/方式"
+                />
+              </div>
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleAssocDelete(idx)} style={{ marginTop: 0 }} />
+            </div>
+          ))}
+          {(!node.data.associatedObjects || node.data.associatedObjects.length === 0 || node.data.associatedObjects.every((o: any) => o.id && o.relationDescription)) && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <Select
+                  size="small"
+                  value={newAssoc.id || undefined}
+                  onChange={(v) => handleNewAssocUpdate(v || '', newAssoc.desc)}
+                  allowClear
+                  showSearch
+                  placeholder="选择对象"
+                  optionFilterProp="label"
+                  style={{ width: '100%' }}
+                  options={[
+                    { label: '人物', options: characterNodes.map((n: any) => ({ value: `character:${n.id}`, label: `👤 ${n.data?.name || n.label}` })) },
+                    { label: '地点', options: locationNodes.map((n: any) => ({ value: `location:${n.id}`, label: `📍 ${n.label}` })) },
+                    { label: '物品', options: itemNodes.map((n: any) => ({ value: `item:${n.id}`, label: `📦 ${n.label}` })) },
+                    { label: '功能', options: [
+                      ...mechanics.checks.map((c) => ({ value: `check:${c.id}`, label: `⚡ ${c.name}` })),
+                      ...mechanics.votes.map((v) => ({ value: `vote:${v.id}`, label: `📋 ${v.name}` })),
+                    ]},
+                  ]}
+                />
+              </div>
+              <div style={{ flex: 2 }}>
+                <Input
+                  size="small"
+                  value={newAssoc.desc}
+                  onChange={(e) => handleNewAssocUpdate(newAssoc.id, e.target.value)}
+                  placeholder="关联原因/方式"
+                />
+              </div>
+              <div style={{ width: 32 }} />
+            </div>
+          )}
           {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
             <>
               <Divider style={{ margin: '12px 0' }} />
@@ -1049,14 +1122,14 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
                     options={param.categories.map((cat) => ({ value: cat, label: cat }))}
                   />
                 ) : (
-                  <InputNumber
+                  <Slider
                     min={param.minValue}
                     max={param.maxValue}
                     step={1}
-                    value={currentValue}
+                    value={currentValue ?? Math.ceil((param.minValue + param.maxValue) / 2)}
                     onChange={(v) => onWorldParamChange?.(param.name, v)}
-                    placeholder={`${param.minValue}~${param.maxValue}`}
-                    style={{ width: '100%' }}
+                    marks={{ [param.minValue]: String(param.minValue), [param.maxValue]: String(param.maxValue) }}
+                    tooltip={{ formatter: (v) => `${param.name}: ${v}`, open: true }}
                   />
                 )}
               </Form.Item>
@@ -1138,7 +1211,7 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange, o
         <>
           <Form.Item label={fieldLabel('触发条件', 'conditionLogic')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={edge.data?.conditionLogic || ''}
               onChange={(e) => onChange('conditionLogic', e.target.value)}
               placeholder='例如：has_item("地图") && completed("任务1")'
@@ -1146,7 +1219,7 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange, o
           </Form.Item>
           <Form.Item label={fieldLabel('备注', 'description')}>
             <TextArea
-              rows={2}
+              autoSize={{ minRows: 2, maxRows: 8 }}
               value={edge.data?.description || ''}
               onChange={(e) => onChange('description', e.target.value)}
             />
@@ -1157,7 +1230,7 @@ const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange, o
       {pageType !== 'plot' && (
         <Form.Item label={fieldLabel('描述', 'description')}>
           <TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 8 }}
             value={edge.data?.description || ''}
             onChange={(e) => onChange('description', e.target.value)}
           />

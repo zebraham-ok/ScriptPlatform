@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Button, Input, Space, Card, Typography, Empty, Popconfirm, InputNumber, Tag, Select, message } from 'antd';
-import { PlusOutlined, DeleteOutlined, RobotOutlined, ThunderboltOutlined, TableOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, RobotOutlined, ThunderboltOutlined, TableOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../store/useProjectStore';
 import { aiFillField } from '../api';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,8 +21,8 @@ const MechanicsPage: React.FC = () => {
     .filter((p) => p.paramType === 'number')
     .map((p) => ({ value: p.name, label: `${p.name} (${p.minValue}~${p.maxValue})` }));
 
-  // AI fill state
-  const [fillingId, setFillingId] = useState<string | null>(null);
+  // AI fill state — per-field loading tracking
+  const [fillingFields, setFillingFields] = useState<Set<string>>(new Set());
 
   // --- Check handlers ---
   const handleAddCheck = useCallback(() => {
@@ -59,44 +59,29 @@ const MechanicsPage: React.FC = () => {
     [checks, mechanics, updateMechanics]
   );
 
-  const handleAIFillCheck = useCallback(
-    async (check: CheckDefinition) => {
+  const handleAIFillCheckField = useCallback(
+    async (check: CheckDefinition, fieldName: string, fieldLabel: string) => {
       if (!project) return;
-      setFillingId(check.id);
+      const key = `${check.id}:${fieldName}`;
+      setFillingFields((prev) => new Set(prev).add(key));
       try {
+        const existingContent = String((check as any)[fieldName] || '');
         const result = await aiFillField({
           project_id: project.projectId,
-          field_name: `检定-${check.name || '未命名'}`,
-          existing_content: JSON.stringify({
-            triggerCondition: check.triggerCondition,
-            difficulty: check.difficulty,
-            checkTarget: check.checkTarget,
-            description: check.description,
-            successEffect: check.successEffect,
-            failureEffect: check.failureEffect,
-          }),
+          field_name: `检定「${check.name || '未命名'}」- ${fieldLabel}`,
+          existing_content: existingContent,
           node_type: 'mechanics_check',
         });
-        // Try to parse AI response as JSON to fill fields
-        try {
-          const parsed = JSON.parse(result.content);
-          handleUpdateCheck(check.id, {
-            triggerCondition: parsed.triggerCondition || check.triggerCondition,
-            difficulty: parsed.difficulty ?? check.difficulty,
-            checkTarget: parsed.checkTarget || check.checkTarget,
-            description: parsed.description || check.description,
-            successEffect: parsed.successEffect || check.successEffect,
-            failureEffect: parsed.failureEffect || check.failureEffect,
-          });
-        } catch {
-          // If not JSON, fill description with raw content
-          handleUpdateCheck(check.id, { description: result.content });
-        }
-        message.success('AI 填充完成');
+        handleUpdateCheck(check.id, { [fieldName]: result.content } as Partial<CheckDefinition>);
+        message.success(`「${fieldLabel}」填充完成`);
       } catch (e: any) {
-        message.error(`AI 填充失败: ${e?.message || e}`);
+        message.error(`「${fieldLabel}」填充失败: ${e?.message || e}`);
       } finally {
-        setFillingId(null);
+        setFillingFields((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
       }
     },
     [project, handleUpdateCheck]
@@ -163,38 +148,63 @@ const MechanicsPage: React.FC = () => {
     [handleAddVoteOption]
   );
 
-  const handleAIFillVote = useCallback(
-    async (vote: VoteDefinition) => {
+  const handleAIFillVoteField = useCallback(
+    async (vote: VoteDefinition, fieldName: string, fieldLabel: string) => {
       if (!project) return;
-      setFillingId(vote.id);
+      const key = `${vote.id}:${fieldName}`;
+      setFillingFields((prev) => new Set(prev).add(key));
       try {
+        const existingContent = typeof (vote as any)[fieldName] === 'string'
+          ? String((vote as any)[fieldName] || '')
+          : JSON.stringify((vote as any)[fieldName] || '');
         const result = await aiFillField({
           project_id: project.projectId,
-          field_name: `投票-${vote.name || '未命名'}`,
-          existing_content: JSON.stringify({
-            options: vote.options,
-            participationCondition: vote.participationCondition,
-          }),
+          field_name: `投票「${vote.name || '未命名'}」- ${fieldLabel}`,
+          existing_content: existingContent,
           node_type: 'mechanics_vote',
         });
-        try {
-          const parsed = JSON.parse(result.content);
-          handleUpdateVote(vote.id, {
-            options: parsed.options || vote.options,
-            participationCondition: parsed.participationCondition || vote.participationCondition,
-          });
-        } catch {
-          handleUpdateVote(vote.id, { participationCondition: result.content });
-        }
-        message.success('AI 填充完成');
+        handleUpdateVote(vote.id, { [fieldName]: result.content } as Partial<VoteDefinition>);
+        message.success(`「${fieldLabel}」填充完成`);
       } catch (e: any) {
-        message.error(`AI 填充失败: ${e?.message || e}`);
+        message.error(`「${fieldLabel}」填充失败: ${e?.message || e}`);
       } finally {
-        setFillingId(null);
+        setFillingFields((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
       }
     },
     [project, handleUpdateVote]
   );
+
+  // Helper: field label with AI button
+  const fieldLabel = (
+    text: string,
+    fieldName: string,
+    itemId: string,
+    fillFn: (field: string, label: string) => void,
+    extraStyle?: React.CSSProperties,
+  ) => {
+    const key = `${itemId}:${fieldName}`;
+    const loading = fillingFields.has(key);
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, ...extraStyle }}>
+        <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{text}</Text>
+        <Button
+          size="small"
+          type="text"
+          icon={loading ? <LoadingOutlined spin /> : <RobotOutlined />}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fillFn(fieldName, text);
+          }}
+          style={{ padding: 0, fontSize: 11, color: '#8c8c8c', height: 16, minWidth: 16, lineHeight: 1 }}
+        />
+      </span>
+    );
+  };
 
   return (
     <div style={{ height: 'calc(100vh - 56px)', padding: 16, display: 'flex', gap: 16 }}>
@@ -230,24 +240,16 @@ const MechanicsPage: React.FC = () => {
             <Empty description="暂无检定，点击「添加检定」开始设置" style={{ marginTop: 40 }} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {checks.map((check) => (
+              {checks.map((check) => {
+                const fill = (fn: string, lbl: string) => handleAIFillCheckField(check, fn, lbl);
+                return (
                 <Card
                   key={check.id}
                   size="small"
                   extra={
-                    <Space size={0}>
-                      <Button
-                        size="small"
-                        icon={<RobotOutlined />}
-                        type="text"
-                        loading={fillingId === check.id}
-                        onClick={() => handleAIFillCheck(check)}
-                        title="AI 辅助填充此检定"
-                      />
-                      <Popconfirm title="确认删除此检定?" onConfirm={() => handleDeleteCheck(check.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />} type="text" />
-                      </Popconfirm>
-                    </Space>
+                    <Popconfirm title="确认删除此检定?" onConfirm={() => handleDeleteCheck(check.id)}>
+                      <Button size="small" danger icon={<DeleteOutlined />} type="text" />
+                    </Popconfirm>
                   }
                   title={
                     <Input
@@ -262,9 +264,9 @@ const MechanicsPage: React.FC = () => {
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48 }}>
-                        触发条件
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('触发条件', 'triggerCondition', check.id, fill)}
+                      </div>
                       <Input
                         size="small"
                         value={check.triggerCondition}
@@ -285,9 +287,9 @@ const MechanicsPage: React.FC = () => {
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48 }}>
-                        检定对象
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('检定对象', 'checkTarget', check.id, fill)}
+                      </div>
                       <Select
                         size="small"
                         allowClear
@@ -300,36 +302,36 @@ const MechanicsPage: React.FC = () => {
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48 }}>
-                        说明
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('说明', 'description', check.id, fill)}
+                      </div>
                       <TextArea
                         size="small"
-                        rows={2}
+                        autoSize={{ minRows: 2, maxRows: 8 }}
                         value={check.description}
                         onChange={(e) => handleUpdateCheck(check.id, { description: e.target.value })}
                         placeholder="如：randint(0, 力量)>=5 则成功"
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48, color: '#52c41a' }}>
-                        成功影响
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('成功影响', 'successEffect', check.id, fill, { color: '#52c41a' })}
+                      </div>
                       <TextArea
                         size="small"
-                        rows={2}
+                        autoSize={{ minRows: 2, maxRows: 8 }}
                         value={check.successEffect}
                         onChange={(e) => handleUpdateCheck(check.id, { successEffect: e.target.value })}
                         placeholder="检定成功后的效果..."
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48, color: '#ff4d4f' }}>
-                        失败影响
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('失败影响', 'failureEffect', check.id, fill, { color: '#ff4d4f' })}
+                      </div>
                       <TextArea
                         size="small"
-                        rows={2}
+                        autoSize={{ minRows: 2, maxRows: 8 }}
                         value={check.failureEffect}
                         onChange={(e) => handleUpdateCheck(check.id, { failureEffect: e.target.value })}
                         placeholder="检定失败后的效果..."
@@ -337,7 +339,8 @@ const MechanicsPage: React.FC = () => {
                     </div>
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -370,24 +373,16 @@ const MechanicsPage: React.FC = () => {
             <Empty description="暂无投票，点击「添加投票」开始设置" style={{ marginTop: 40 }} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {votes.map((vote) => (
+              {votes.map((vote) => {
+                const fill = (fn: string, lbl: string) => handleAIFillVoteField(vote, fn, lbl);
+                return (
                 <Card
                   key={vote.id}
                   size="small"
                   extra={
-                    <Space size={0}>
-                      <Button
-                        size="small"
-                        icon={<RobotOutlined />}
-                        type="text"
-                        loading={fillingId === vote.id}
-                        onClick={() => handleAIFillVote(vote)}
-                        title="AI 辅助填充此投票"
-                      />
-                      <Popconfirm title="确认删除此投票?" onConfirm={() => handleDeleteVote(vote.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />} type="text" />
-                      </Popconfirm>
-                    </Space>
+                    <Popconfirm title="确认删除此投票?" onConfirm={() => handleDeleteVote(vote.id)}>
+                      <Button size="small" danger icon={<DeleteOutlined />} type="text" />
+                    </Popconfirm>
                   }
                   title={
                     <Input
@@ -402,9 +397,9 @@ const MechanicsPage: React.FC = () => {
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48, lineHeight: '30px' }}>
-                        选项
-                      </Text>
+                      <div style={{ minWidth: 48, lineHeight: '30px' }}>
+                        {fieldLabel('选项', 'options', vote.id, fill)}
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', flex: 1 }}>
                         {vote.options.map((opt) => (
                           <Tag
@@ -430,12 +425,12 @@ const MechanicsPage: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 48 }}>
-                        参与条件
-                      </Text>
+                      <div style={{ minWidth: 48 }}>
+                        {fieldLabel('参与条件', 'participationCondition', vote.id, fill)}
+                      </div>
                       <TextArea
                         size="small"
-                        rows={2}
+                        autoSize={{ minRows: 2, maxRows: 8 }}
                         value={vote.participationCondition}
                         onChange={(e) => handleUpdateVote(vote.id, { participationCondition: e.target.value })}
                         placeholder="如：所有存活角色均可投票"
@@ -443,7 +438,8 @@ const MechanicsPage: React.FC = () => {
                     </div>
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
