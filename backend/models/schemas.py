@@ -54,6 +54,7 @@ class ProjectData(BaseModel):
     worldSetting: List[WorldBlock] = Field(default_factory=list)
     characters: GraphData = Field(default_factory=GraphData)
     locations: GraphData = Field(default_factory=GraphData)
+    items: GraphData = Field(default_factory=GraphData)
     plot: PlotData = Field(default_factory=PlotData)
     aiConfig: Optional[AIConfig] = None
     updatedAt: str = ""

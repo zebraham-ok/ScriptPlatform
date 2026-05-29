@@ -39,10 +39,17 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
     if (!state.project) return { nodes: [], edges: [] };
     const key = pageType === 'character' ? 'characters' as const
       : pageType === 'location' ? 'locations' as const
+      : pageType === 'item' ? 'items' as const
       : 'plot' as const;
     if (key === 'plot') return state.project.plot.graph;
     return state.project[key];
   });
+
+  // Cross-graph data for plot bindings
+  const project = useProjectStore((s) => s.project);
+  const locationNodes = project?.locations.nodes || [];
+  const itemNodes = project?.items.nodes || [];
+  const characterNodes = project?.characters.nodes || [];
 
   const selectedNode = useMemo(
     () => data.nodes.find((n) => n.id === selectedElementId),
@@ -61,6 +68,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           if (!state.project) return { nodes: [], edges: [] };
           const key = pageType === 'character' ? 'characters' as const
             : pageType === 'location' ? 'locations' as const
+            : pageType === 'item' ? 'items' as const
             : 'plot' as const;
           if (key === 'plot') return state.project.plot.graph;
           return state.project[key];
@@ -88,6 +96,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           if (!state.project) return { nodes: [], edges: [] };
           const key = pageType === 'character' ? 'characters' as const
             : pageType === 'location' ? 'locations' as const
+            : pageType === 'item' ? 'items' as const
             : 'plot' as const;
           if (key === 'plot') return state.project.plot.graph;
           return state.project[key];
@@ -119,6 +128,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
       if (!state.project) return { nodes: [], edges: [] };
       const key = pageType === 'character' ? 'characters' as const
         : pageType === 'location' ? 'locations' as const
+        : pageType === 'item' ? 'items' as const
         : 'plot' as const;
       if (key === 'plot') return state.project.plot.graph;
       return state.project[key];
@@ -139,6 +149,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         if (!state.project) return { nodes: [], edges: [] };
         const key = pageType === 'character' ? 'characters' as const
           : pageType === 'location' ? 'locations' as const
+          : pageType === 'item' ? 'items' as const
           : 'plot' as const;
         if (key === 'plot') return state.project.plot.graph;
         return state.project[key];
@@ -163,6 +174,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         if (!state.project) return { nodes: [], edges: [] };
         const key2 = pageType === 'character' ? 'characters' as const
           : pageType === 'location' ? 'locations' as const
+          : pageType === 'item' ? 'items' as const
           : 'plot' as const;
         if (key2 === 'plot') return state.project.plot.graph;
         return state.project[key2];
@@ -185,6 +197,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
       if (!state.project) return { nodes: [], edges: [] };
       const key = pageType === 'character' ? 'characters' as const
         : pageType === 'location' ? 'locations' as const
+        : pageType === 'item' ? 'items' as const
         : 'plot' as const;
       if (key === 'plot') return state.project.plot.graph;
       return state.project[key];
@@ -205,6 +218,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         if (!state.project) return { nodes: [], edges: [] };
         const key = pageType === 'character' ? 'characters' as const
           : pageType === 'location' ? 'locations' as const
+          : pageType === 'item' ? 'items' as const
           : 'plot' as const;
         if (key === 'plot') return state.project.plot.graph;
         return state.project[key];
@@ -228,6 +242,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         if (!state.project) return { nodes: [], edges: [] };
         const key = pageType === 'character' ? 'characters' as const
           : pageType === 'location' ? 'locations' as const
+          : pageType === 'item' ? 'items' as const
           : 'plot' as const;
         if (key === 'plot') return state.project.plot.graph;
         return state.project[key];
@@ -291,6 +306,9 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           onCondAdd={handleConditionAdd}
           onCondChange={handleConditionChange}
           onCondDelete={handleConditionDelete}
+          locationNodes={locationNodes}
+          itemNodes={itemNodes}
+          characterNodes={characterNodes}
         />
       )}
 
@@ -319,6 +337,9 @@ interface NodeEditFormProps {
   onCondAdd: () => void;
   onCondChange: (index: number, value: string) => void;
   onCondDelete: (index: number) => void;
+  locationNodes?: any[];
+  itemNodes?: any[];
+  characterNodes?: any[];
 }
 
 const NodeEditForm: React.FC<NodeEditFormProps> = ({
@@ -333,6 +354,9 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   onCondAdd,
   onCondChange,
   onCondDelete,
+  locationNodes = [],
+  itemNodes = [],
+  characterNodes = [],
 }) => {
   return (
     <Form layout="vertical" size="small">
@@ -358,6 +382,20 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
           </Form.Item>
           <Form.Item label="性格">
             <TextArea rows={2} value={node.data.personality || ''} onChange={(e) => onChange('personality', e.target.value)} />
+          </Form.Item>
+          <Form.Item label="初始位置">
+            <Select
+              value={node.data.initialLocation || undefined}
+              onChange={(v) => onChange('initialLocation', v)}
+              allowClear
+              showSearch
+              placeholder="绑定到地点节点"
+              optionFilterProp="label"
+              options={locationNodes.map((n: any) => ({
+                value: n.id,
+                label: `📍 ${n.label}`,
+              }))}
+            />
           </Form.Item>
           <Form.Item label="描述">
             <TextArea
@@ -396,6 +434,77 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               rows={2}
               value={node.data.description || ''}
               onChange={(e) => onChange('description', e.target.value)}
+            />
+          </Form.Item>
+        </>
+      )}
+
+      {pageType === 'item' && (
+        <>
+          <Form.Item label="物品名称">
+            <Input value={node.label} onChange={(e) => onChange('label', e.target.value)} />
+          </Form.Item>
+          <Form.Item label="外观">
+            <TextArea
+              rows={2}
+              value={node.data.appearance || ''}
+              onChange={(e) => onChange('appearance', e.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="功能">
+            <TextArea
+              rows={2}
+              value={node.data.function || ''}
+              onChange={(e) => onChange('function', e.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="获得方式">
+            <TextArea
+              rows={2}
+              value={node.data.acquisitionMethod || ''}
+              onChange={(e) => onChange('acquisitionMethod', e.target.value)}
+            />
+          </Form.Item>
+          <Divider style={{ margin: '12px 0' }} />
+          <div style={{ marginBottom: 8 }}>
+            <Space>
+              <Text strong style={{ fontSize: 12 }}>触发事件</Text>
+              <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onCondAdd}>
+                添加
+              </Button>
+            </Space>
+          </div>
+          {(node.data.conditions || []).map((evt: string, idx: number) => (
+            <div key={idx} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <Input
+                size="small"
+                value={evt}
+                onChange={(e) => onCondChange(idx, e.target.value)}
+                placeholder="事件描述"
+              />
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onCondDelete(idx)} />
+            </div>
+          ))}
+          <Divider style={{ margin: '12px 0' }} />
+          <Form.Item label="初始所在">
+            <Select
+              value={node.data.initialLocation || undefined}
+              onChange={(v) => onChange('initialLocation', v)}
+              allowClear
+              showSearch
+              placeholder="绑定到人物/地点/情节节点"
+              optionFilterProp="label"
+              options={[
+                ...characterNodes.map((n: any) => ({
+                  value: n.id,
+                  label: `👤 ${n.label || n.data?.name}`,
+                })),
+                ...locationNodes.map((n: any) => ({
+                  value: n.id,
+                  label: `📍 ${n.label}`,
+                })),
+                ...(itemNodes.length > 0 ? [] : []),
+              ]}
             />
           </Form.Item>
         </>
@@ -443,6 +552,53 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onCondDelete(idx)} />
             </div>
           ))}
+          <Divider style={{ margin: '12px 0' }} />
+          <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>事件绑定</Text>
+          <Form.Item label="触发地点">
+            <Select
+              mode="multiple"
+              value={node.data.boundLocations || []}
+              onChange={(v) => onChange('boundLocations', v)}
+              allowClear
+              showSearch
+              placeholder="选择地点"
+              optionFilterProp="label"
+              options={locationNodes.map((n: any) => ({
+                value: n.id,
+                label: n.label,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="触发物品">
+            <Select
+              mode="multiple"
+              value={node.data.boundItems || []}
+              onChange={(v) => onChange('boundItems', v)}
+              allowClear
+              showSearch
+              placeholder="选择物品"
+              optionFilterProp="label"
+              options={itemNodes.map((n: any) => ({
+                value: n.id,
+                label: n.label,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="触发人物">
+            <Select
+              mode="multiple"
+              value={node.data.boundCharacters || []}
+              onChange={(v) => onChange('boundCharacters', v)}
+              allowClear
+              showSearch
+              placeholder="选择人物"
+              optionFilterProp="label"
+              options={characterNodes.map((n: any) => ({
+                value: n.id,
+                label: n.data?.name || n.label,
+              }))}
+            />
+          </Form.Item>
         </>
       )}
 
@@ -491,6 +647,12 @@ interface EdgeEditFormProps {
 const EdgeEditForm: React.FC<EdgeEditFormProps> = ({ pageType, edge, onChange }) => {
   return (
     <Form layout="vertical" size="small">
+      {pageType === 'item' && (
+        <Form.Item label="关联标签">
+          <Input value={edge.label || ''} onChange={(e) => onChange('label', e.target.value)} />
+        </Form.Item>
+      )}
+
       {pageType === 'character' && (
         <Form.Item label="关系类型">
           <Select

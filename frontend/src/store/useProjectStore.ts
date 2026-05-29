@@ -48,7 +48,7 @@ interface ProjectStore {
   toggleEndCheckpoint: (nodeId: string) => void;
 
   // Internal
-  _getGraphKey: () => 'characters' | 'locations' | 'plot';
+  _getGraphKey: () => 'characters' | 'locations' | 'items' | 'plot';
   _autoSave: () => void;
 }
 
@@ -147,6 +147,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const page = get().currentPage;
     if (page === 'character') return 'characters';
     if (page === 'location') return 'locations';
+    if (page === 'item') return 'items';
     return 'plot';
   },
 
@@ -155,6 +156,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!project) return { nodes: [], edges: [] };
     const key = get()._getGraphKey();
     if (key === 'plot') return project.plot.graph;
+    if (key === 'items') return project.items;
     return project[key];
   },
 

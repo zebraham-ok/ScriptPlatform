@@ -28,6 +28,7 @@ export function exportLangGraphState(project: ProjectData) {
       gender: n.data?.gender || '',
       appearance: n.data?.appearance || '',
       personality: n.data?.personality || '',
+      initialLocation: n.data?.initialLocation || '',
       description: n.data?.description || '',
       attributes: n.data?.attributes || {},
       relationships,
@@ -58,6 +59,32 @@ export function exportLangGraphState(project: ProjectData) {
     };
   });
 
+  // Transform items
+  const items = project.items.nodes.map((n) => {
+    const relations = project.items.edges
+      .filter((e) => e.source === n.id || e.target === n.id)
+      .map((e) => {
+        const targetId = e.source === n.id ? e.target : e.source;
+        const targetNode = project.items.nodes.find((nn) => nn.id === targetId);
+        return {
+          target: targetId,
+          targetName: targetNode?.label || targetId,
+          relation: e.label || '关联',
+          desc: e.data?.description || '',
+        };
+      });
+    return {
+      id: n.id,
+      name: n.label,
+      appearance: n.data?.appearance || '',
+      function: n.data?.function || '',
+      acquisitionMethod: n.data?.acquisitionMethod || '',
+      triggerEvents: n.data?.conditions || [],
+      initialLocation: n.data?.initialLocation || '',
+      relations,
+    };
+  });
+
   // Transform plot
   const checkpoints: Record<string, any> = {};
   project.plot.graph.nodes.forEach((n) => {
@@ -67,6 +94,9 @@ export function exportLangGraphState(project: ProjectData) {
       player_info: n.data?.sceneDescription || '',
       hidden_info: n.data?.description || '',
       actions: n.data?.conditions || [],
+      bound_locations: n.data?.boundLocations || [],
+      bound_items: n.data?.boundItems || [],
+      bound_characters: n.data?.boundCharacters || [],
     };
   });
 
@@ -86,6 +116,7 @@ export function exportLangGraphState(project: ProjectData) {
     })),
     characters,
     locations,
+    items,
     plot: {
       initial_checkpoint: project.plot.initialCheckpoint,
       end_checkpoints: project.plot.endCheckpoints || [],
@@ -151,6 +182,7 @@ function buildLangGraphState(project: ProjectData): any {
       id: n.id, name: n.data?.name || n.label,
       aliases: n.data?.aliases || [], gender: n.data?.gender || '',
       appearance: n.data?.appearance || '', personality: n.data?.personality || '',
+      initialLocation: n.data?.initialLocation || '',
       description: n.data?.description || '', attributes: n.data?.attributes || {},
       relationships,
     };
@@ -170,6 +202,23 @@ function buildLangGraphState(project: ProjectData): any {
     };
   });
 
+  const items = project.items.nodes.map((n) => {
+    const relations = project.items.edges
+      .filter((e) => e.source === n.id || e.target === n.id)
+      .map((e) => {
+        const targetId = e.source === n.id ? e.target : e.source;
+        const targetNode = project.items.nodes.find((nn) => nn.id === targetId);
+        return { target: targetId, targetName: targetNode?.label || targetId, relation: e.label || '关联', desc: e.data?.description || '' };
+      });
+    return {
+      id: n.id, name: n.label,
+      appearance: n.data?.appearance || '', function: n.data?.function || '',
+      acquisitionMethod: n.data?.acquisitionMethod || '',
+      triggerEvents: n.data?.conditions || [], initialLocation: n.data?.initialLocation || '',
+      relations,
+    };
+  });
+
   const checkpoints: Record<string, any> = {};
   project.plot.graph.nodes.forEach((n) => {
     checkpoints[n.id] = {
@@ -177,6 +226,9 @@ function buildLangGraphState(project: ProjectData): any {
       player_info: n.data?.sceneDescription || '',
       hidden_info: n.data?.description || '',
       actions: n.data?.conditions || [],
+      bound_locations: n.data?.boundLocations || [],
+      bound_items: n.data?.boundItems || [],
+      bound_characters: n.data?.boundCharacters || [],
     };
   });
 
@@ -188,7 +240,7 @@ function buildLangGraphState(project: ProjectData): any {
   return {
     script_title: project.title,
     world_setting: project.worldSetting.map((w) => ({ title: w.title, content: w.content })),
-    characters, locations,
+    characters, locations, items,
     plot: { initial_checkpoint: project.plot.initialCheckpoint, end_checkpoints: project.plot.endCheckpoints || [], checkpoints, transitions },
     metadata: { exported_at: new Date().toISOString(), source: 'script-builder-platform' },
   };

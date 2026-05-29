@@ -13,6 +13,7 @@ interface AIPanelProps {}
 const pageLabelMap: Record<PageType, string> = {
   character: '人物生成',
   location: '地点描写',
+  item: '物品生成',
   worldview: '世界观构建',
   plot: '情节建议',
 };

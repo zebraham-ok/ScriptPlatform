@@ -17,14 +17,21 @@ export interface NodeData {
     gender?: string;
     appearance?: string;
     personality?: string;
+    initialLocation?: string;
     attributes?: Record<string, any>;
     description?: string;
     // Location fields
     locationType?: string;
     terrain?: string;
-    // Checkpoint fields
+    // Item fields
+    function?: string;
+    acquisitionMethod?: string;
+    // Plot / checkpoint fields
     sceneDescription?: string;
     conditions?: string[];
+    boundLocations?: string[];
+    boundItems?: string[];
+    boundCharacters?: string[];
     // Generic
     customFields?: Record<string, any>;
   };
@@ -72,6 +79,7 @@ export interface ProjectData {
   worldSetting: WorldBlock[];
   characters: GraphData;
   locations: GraphData;
+  items: GraphData;
   plot: PlotData;
   aiConfig?: AIConfig;
   updatedAt?: string;
@@ -83,6 +91,6 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
-export type PageType = 'character' | 'location' | 'worldview' | 'plot';
+export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item';
 
 export type SelectionType = 'node' | 'edge' | null;

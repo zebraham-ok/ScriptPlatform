@@ -6,6 +6,7 @@ import CharacterPage from './pages/CharacterPage';
 import LocationPage from './pages/LocationPage';
 import WorldviewPage from './pages/WorldviewPage';
 import PlotPage from './pages/PlotPage';
+import ItemPage from './pages/ItemPage';
 import AIPanel from './components/AIPanel/AIPanel';
 import { useProjectStore } from './store/useProjectStore';
 import { listProjects, createProject, deleteProject } from './api';
@@ -91,6 +92,8 @@ const App: React.FC = () => {
         return <WorldviewPage />;
       case 'plot':
         return <PlotPage />;
+      case 'item':
+        return <ItemPage />;
       default:
         return null;
     }

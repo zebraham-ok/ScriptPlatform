@@ -20,6 +20,7 @@ import type { PageType } from '../../types';
 import CustomCharacterNode from './CustomCharacterNode';
 import CustomLocationNode from './CustomLocationNode';
 import CustomCheckpointNode from './CustomCheckpointNode';
+import CustomItemNode from './CustomItemNode';
 
 interface GraphCanvasProps {
   pageType: PageType;
@@ -29,6 +30,7 @@ const nodeTypes: NodeTypes = {
   characterNode: CustomCharacterNode,
   locationNode: CustomLocationNode,
   checkpointNode: CustomCheckpointNode,
+  itemNode: CustomItemNode,
 };
 
 const mapNodeType: Record<PageType, string> = {
@@ -36,6 +38,7 @@ const mapNodeType: Record<PageType, string> = {
   location: 'locationNode',
   plot: 'checkpointNode',
   worldview: 'characterNode',
+  item: 'itemNode',
 };
 
 const defaultLabels: Record<PageType, string> = {
@@ -43,6 +46,7 @@ const defaultLabels: Record<PageType, string> = {
   location: '新地点',
   plot: '新检查点',
   worldview: '',
+  item: '新物品',
 };
 
 const GraphCanvas: React.FC<GraphCanvasProps> = ({ pageType }) => {
@@ -63,6 +67,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ pageType }) => {
     if (!state.project) return { nodes: [], edges: [] };
     const key = pageType === 'character' ? 'characters' as const
       : pageType === 'location' ? 'locations' as const
+      : pageType === 'item' ? 'items' as const
       : 'plot' as const;
     if (key === 'plot') return state.project.plot.graph;
     return state.project[key];
@@ -158,7 +163,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ pageType }) => {
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
       const id = uuidv4();
-      const defaultLabel = pageType === 'plot' ? '转化' : pageType === 'location' ? '通行方式' : '';
+      const defaultLabel = pageType === 'plot' ? '转化' : pageType === 'location' ? '通行方式' : pageType === 'item' ? '关联' : '';
       const newEdge: any = {
         id,
         source: connection.source,

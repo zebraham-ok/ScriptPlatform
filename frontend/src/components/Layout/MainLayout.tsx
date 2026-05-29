@@ -6,6 +6,7 @@ import {
   EnvironmentOutlined,
   BookOutlined,
   NodeIndexOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import { exportFullProject, exportLangGraphState, exportPythonCode } from '../../utils/export';
@@ -23,6 +24,7 @@ interface MainLayoutProps {
 const tabItems = [
   { key: 'character' as PageType, label: '人物', icon: <UserOutlined /> },
   { key: 'location' as PageType, label: '地点', icon: <EnvironmentOutlined /> },
+  { key: 'item' as PageType, label: '物品', icon: <ToolOutlined /> },
   { key: 'worldview' as PageType, label: '世界观', icon: <BookOutlined /> },
   { key: 'plot' as PageType, label: '情节树', icon: <NodeIndexOutlined /> },
 ];

@@ -31,7 +31,8 @@ def _init_empty_project(title: str, project_id: str) -> ProjectData:
         worldSetting=[],
         characters=GraphData(nodes=[], edges=[]),
         locations=GraphData(nodes=[], edges=[]),
-        plot=PlotData(initialCheckpoint="", graph=GraphData(nodes=[], edges=[])),
+        items=GraphData(nodes=[], edges=[]),
+        plot=PlotData(initialCheckpoint="", endCheckpoints=[], graph=GraphData(nodes=[], edges=[])),
         updatedAt=now,
     )
 
