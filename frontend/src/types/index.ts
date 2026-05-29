@@ -21,6 +21,7 @@ export interface NodeData {
     motivation?: string;
     initialLocation?: string;
     attributes?: Record<string, any>;
+    worldParams?: Record<string, any>;
     description?: string;
     // Location fields
     locationType?: string;
@@ -64,6 +65,14 @@ export interface WorldBlock {
   content: string;
 }
 
+export interface CharacterParamDefinition {
+  name: string;
+  paramType: 'category' | 'number';
+  categories: string[];
+  minValue: number;
+  maxValue: number;
+}
+
 export interface PlotData {
   initialCheckpoint: string;
   endCheckpoints: string[];
@@ -79,6 +88,7 @@ export interface ProjectData {
   projectId: string;
   title: string;
   worldSetting: WorldBlock[];
+  characterParams: CharacterParamDefinition[];
   characters: GraphData;
   locations: GraphData;
   items: GraphData;

@@ -223,7 +223,7 @@ async def get_ai_history(project_id: str):
 
 
 # Valid top-level keys in ProjectData — used to validate extracted JSON
-_PROJECT_TOP_KEYS = ["title", "worldSetting", "characters", "locations", "items", "plot", "aiConfig"]
+_PROJECT_TOP_KEYS = ["title", "worldSetting", "characterParams", "characters", "locations", "items", "plot", "aiConfig"]
 
 
 @router.post("/ai/modify", response_model=AIModifyResponse)

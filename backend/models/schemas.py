@@ -43,6 +43,15 @@ class PlotData(BaseModel):
     graph: GraphData = Field(default_factory=GraphData)
 
 
+class CharacterParamDefinition(BaseModel):
+    """世界观中的人物参数定义：分类或数值型，设置后所有人物的自定义属性中都会出现。"""
+    name: str = ""
+    paramType: str = "number"  # "category" | "number"
+    categories: List[str] = Field(default_factory=list)  # 分类的类别选项
+    minValue: float = 0.0
+    maxValue: float = 10.0
+
+
 class AIConfig(BaseModel):
     apiKey: Optional[str] = None
     model: str = "qwen-plus"
@@ -52,6 +61,7 @@ class ProjectData(BaseModel):
     projectId: str = ""
     title: str = ""
     worldSetting: List[WorldBlock] = Field(default_factory=list)
+    characterParams: List[CharacterParamDefinition] = Field(default_factory=list)
     characters: GraphData = Field(default_factory=GraphData)
     locations: GraphData = Field(default_factory=GraphData)
     items: GraphData = Field(default_factory=GraphData)

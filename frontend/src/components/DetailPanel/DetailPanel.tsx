@@ -260,6 +260,30 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
     [selectedElementId, updateNode, pageType]
   );
 
+  const handleWorldParamChange = useCallback(
+    (paramName: string, value: any) => {
+      if (!selectedElementId) return;
+      const state = useProjectStore.getState();
+      const currentData = (() => {
+        if (!state.project) return { nodes: [], edges: [] };
+        const key = pageType === 'character' ? 'characters' as const
+          : pageType === 'location' ? 'locations' as const
+          : pageType === 'item' ? 'items' as const
+          : 'plot' as const;
+        if (key === 'plot') return state.project.plot.graph;
+        return state.project[key];
+      })();
+      const node = currentData.nodes.find((n) => n.id === selectedElementId);
+      if (!node) return;
+      const worldParams = { ...(node.data.worldParams || {}) };
+      worldParams[paramName] = value;
+      updateNode(selectedElementId, {
+        data: { ...node.data, worldParams },
+      } as any);
+    },
+    [selectedElementId, updateNode, pageType]
+  );
+
   const handleOpenAI = useCallback(() => {
     setShowAI(true);
   }, [setShowAI]);
@@ -328,6 +352,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         <NodeEditForm
           pageType={pageType}
           node={selectedNode}
+          characterParams={project?.characterParams || []}
           isEnd={(() => {
             const p = useProjectStore.getState().project;
             return p ? (p.plot.endCheckpoints || []).includes(selectedNode.id) : false;
@@ -345,6 +370,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
           onCondAdd={handleConditionAdd}
           onCondChange={handleConditionChange}
           onCondDelete={handleConditionDelete}
+          onWorldParamChange={handleWorldParamChange}
           locationNodes={locationNodes}
           itemNodes={itemNodes}
           characterNodes={characterNodes}
@@ -371,6 +397,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
 interface NodeEditFormProps {
   pageType: PageType;
   node: any;
+  characterParams?: import('../../types').CharacterParamDefinition[];
   isEnd?: boolean;
   onToggleEnd?: () => void;
   isStart?: boolean;
@@ -382,6 +409,7 @@ interface NodeEditFormProps {
   onCondAdd: () => void;
   onCondChange: (index: number, value: string) => void;
   onCondDelete: (index: number) => void;
+  onWorldParamChange?: (paramName: string, value: any) => void;
   locationNodes?: any[];
   itemNodes?: any[];
   characterNodes?: any[];
@@ -392,6 +420,7 @@ interface NodeEditFormProps {
 const NodeEditForm: React.FC<NodeEditFormProps> = ({
   pageType,
   node,
+  characterParams = [],
   isEnd,
   onToggleEnd,
   isStart,
@@ -403,6 +432,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
   onCondAdd,
   onCondChange,
   onCondDelete,
+  onWorldParamChange,
   locationNodes = [],
   itemNodes = [],
   characterNodes = [],
@@ -721,6 +751,45 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onAttrDelete(key)} />
             </div>
           ))}
+        </>
+      )}
+
+      {pageType === 'character' && characterParams.length > 0 && (
+        <>
+          <Divider style={{ margin: '12px 0' }} />
+          <div style={{ marginBottom: 8 }}>
+            <Text strong style={{ fontSize: 12 }}>世界参数</Text>
+            <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+              （由世界观设定）
+            </Text>
+          </div>
+          {characterParams.map((param) => {
+            const worldParams = node.data.worldParams || {};
+            const currentValue = worldParams[param.name];
+            return (
+              <Form.Item key={param.name} label={param.name}>
+                {param.paramType === 'category' ? (
+                  <Select
+                    value={currentValue || undefined}
+                    onChange={(v) => onWorldParamChange?.(param.name, v)}
+                    allowClear
+                    placeholder={`选择${param.name}`}
+                    options={param.categories.map((cat) => ({ value: cat, label: cat }))}
+                  />
+                ) : (
+                  <InputNumber
+                    min={param.minValue}
+                    max={param.maxValue}
+                    step={1}
+                    value={currentValue}
+                    onChange={(v) => onWorldParamChange?.(param.name, v)}
+                    placeholder={`${param.minValue}~${param.maxValue}`}
+                    style={{ width: '100%' }}
+                  />
+                )}
+              </Form.Item>
+            );
+          })}
         </>
       )}
     </Form>
