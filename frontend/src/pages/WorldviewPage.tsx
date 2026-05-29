@@ -199,7 +199,7 @@ const WorldviewPage: React.FC = () => {
               }
             >
               <TextArea
-                rows={8}
+                autoSize={{ minRows: 4, maxRows: 20 }}
                 value={block.content}
                 onChange={(e) => handleContentChange(block.id, e.target.value)}
                 placeholder="在此撰写世界观内容，支持 Markdown 格式..."

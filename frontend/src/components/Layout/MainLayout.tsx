@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Layout, Button, Dropdown, Tabs, Space, Typography, Spin } from 'antd';
+import { Layout, Button, Tabs, Space, Typography, Spin } from 'antd';
 import {
   ExportOutlined,
   UserOutlined,
@@ -10,9 +10,9 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
-import { exportFullProject, exportLangGraphState, exportPythonCode } from '../../utils/export';
+import { exportFullProject } from '../../utils/export';
 import type { PageType } from '../../types';
-import type { MenuProps } from 'antd';
+
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -40,24 +40,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) =>
     },
     [setCurrentPage]
   );
-
-  const exportItems: MenuProps['items'] = [
-    {
-      key: 'full',
-      label: '导出完整项目',
-      onClick: () => project && exportFullProject(project),
-    },
-    {
-      key: 'langgraph',
-      label: '导出 LangGraph State',
-      onClick: () => project && exportLangGraphState(project),
-    },
-    {
-      key: 'python',
-      label: '导出 Python 初始化代码',
-      onClick: () => project && exportPythonCode(project),
-    },
-  ];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -103,11 +85,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) =>
           <Button onClick={onProjectSelect} size="small">
             项目列表
           </Button>
-          <Dropdown menu={{ items: exportItems }} disabled={!project}>
-            <Button icon={<ExportOutlined />} size="small" disabled={!project}>
-              导出
-            </Button>
-          </Dropdown>
+          <Button
+            icon={<ExportOutlined />}
+            size="small"
+            disabled={!project}
+            onClick={() => project && exportFullProject(project)}
+          >
+            导出完整项目
+          </Button>
         </Space>
       </Header>
 

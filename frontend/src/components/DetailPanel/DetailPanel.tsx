@@ -610,6 +610,44 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               onChange={(e) => onChange('description', e.target.value)}
             />
           </Form.Item>
+          {characterParams.length > 0 && (
+            <>
+              <Divider style={{ margin: '12px 0' }} />
+              <div style={{ marginBottom: 8 }}>
+                <Text strong style={{ fontSize: 12 }}>世界参数</Text>
+                <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                  （由世界观设定）
+                </Text>
+              </div>
+              {characterParams.map((param) => {
+                const worldParams = node.data.worldParams || {};
+                const currentValue = worldParams[param.name];
+                return (
+                  <Form.Item key={param.name} label={param.name}>
+                    {param.paramType === 'category' ? (
+                      <Select
+                        value={currentValue || undefined}
+                        onChange={(v) => onWorldParamChange?.(param.name, v)}
+                        allowClear
+                        placeholder={`选择${param.name}`}
+                        options={param.categories.map((cat) => ({ value: cat, label: cat }))}
+                      />
+                    ) : (
+                      <Slider
+                        min={param.minValue}
+                        max={param.maxValue}
+                        step={1}
+                        value={currentValue ?? Math.ceil((param.minValue + param.maxValue) / 2)}
+                        onChange={(v) => onWorldParamChange?.(param.name, v)}
+                        marks={{ [param.minValue]: String(param.minValue), [param.maxValue]: String(param.maxValue) }}
+                        tooltip={{ formatter: (v) => `${param.name}: ${v}`, open: true }}
+                      />
+                    )}
+                  </Form.Item>
+                );
+              })}
+            </>
+          )}
           {(mechanics.checks.length > 0 || mechanics.votes.length > 0) && (
             <>
               <Divider style={{ margin: '12px 0' }} />
@@ -773,6 +811,18 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               onChange={(e) => onChange('acquisitionMethod', e.target.value)}
             />
           </Form.Item>
+          <Form.Item label="数量限制">
+            <Select
+              size="small"
+              value={node.data.unique ? '唯一' : '不限个数'}
+              onChange={(v) => onChange('unique', v === '唯一')}
+              style={{ width: '100%' }}
+              options={[
+                { value: '不限个数', label: '不限个数' },
+                { value: '唯一', label: '唯一' },
+              ]}
+            />
+          </Form.Item>
           <Divider style={{ margin: '12px 0' }} />
           <div style={{ marginBottom: 8 }}>
             <Space>
@@ -895,34 +945,6 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               onChange={(e) => onChange('description', e.target.value)}
             />
           </Form.Item>
-          <Divider style={{ margin: '12px 0' }} />
-          <div style={{ marginBottom: 8 }}>
-            <Space>
-              <Text strong style={{ fontSize: 12 }}>潜在行动</Text>
-              <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onPotentialActionAdd}>
-                添加
-              </Button>
-            </Space>
-          </div>
-          {Object.entries(node.data.potentialActions || {}).map(([key, value]: [string, any]) => (
-            <div key={key} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-              <Input
-                size="small"
-                style={{ flex: 1 }}
-                value={key}
-                onChange={(e) => onPotentialActionChange(key, e.target.value, value)}
-                placeholder="行动名"
-              />
-              <Input
-                size="small"
-                style={{ flex: 2 }}
-                value={typeof value === 'string' ? value : JSON.stringify(value)}
-                onChange={(e) => onPotentialActionChange(key, key, e.target.value)}
-                placeholder="行动描述"
-              />
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onPotentialActionDelete(key)} />
-            </div>
-          ))}
           <Divider style={{ margin: '12px 0' }} />
           <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>事件绑定</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>触发条件</Text>
@@ -1063,6 +1085,34 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               </div>
             </>
           )}
+          <Divider style={{ margin: '12px 0' }} />
+          <div style={{ marginBottom: 8 }}>
+            <Space>
+              <Text strong style={{ fontSize: 12 }}>潜在行动</Text>
+              <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={onPotentialActionAdd}>
+                添加
+              </Button>
+            </Space>
+          </div>
+          {Object.entries(node.data.potentialActions || {}).map(([key, value]: [string, any]) => (
+            <div key={key} style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <Input
+                size="small"
+                style={{ flex: 1 }}
+                value={key}
+                onChange={(e) => onPotentialActionChange(key, e.target.value, value)}
+                placeholder="行动名"
+              />
+              <Input
+                size="small"
+                style={{ flex: 2 }}
+                value={typeof value === 'string' ? value : JSON.stringify(value)}
+                onChange={(e) => onPotentialActionChange(key, key, e.target.value)}
+                placeholder="行动描述"
+              />
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onPotentialActionDelete(key)} />
+            </div>
+          ))}
         </>
       )}
 
@@ -1096,45 +1146,6 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
               <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onAttrDelete(key)} />
             </div>
           ))}
-        </>
-      )}
-
-      {pageType === 'character' && characterParams.length > 0 && (
-        <>
-          <Divider style={{ margin: '12px 0' }} />
-          <div style={{ marginBottom: 8 }}>
-            <Text strong style={{ fontSize: 12 }}>世界参数</Text>
-            <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-              （由世界观设定）
-            </Text>
-          </div>
-          {characterParams.map((param) => {
-            const worldParams = node.data.worldParams || {};
-            const currentValue = worldParams[param.name];
-            return (
-              <Form.Item key={param.name} label={param.name}>
-                {param.paramType === 'category' ? (
-                  <Select
-                    value={currentValue || undefined}
-                    onChange={(v) => onWorldParamChange?.(param.name, v)}
-                    allowClear
-                    placeholder={`选择${param.name}`}
-                    options={param.categories.map((cat) => ({ value: cat, label: cat }))}
-                  />
-                ) : (
-                  <Slider
-                    min={param.minValue}
-                    max={param.maxValue}
-                    step={1}
-                    value={currentValue ?? Math.ceil((param.minValue + param.maxValue) / 2)}
-                    onChange={(v) => onWorldParamChange?.(param.name, v)}
-                    marks={{ [param.minValue]: String(param.minValue), [param.maxValue]: String(param.maxValue) }}
-                    tooltip={{ formatter: (v) => `${param.name}: ${v}`, open: true }}
-                  />
-                )}
-              </Form.Item>
-            );
-          })}
         </>
       )}
     </Form>
