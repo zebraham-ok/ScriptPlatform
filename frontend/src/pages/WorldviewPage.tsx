@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react';
-import { Button, Input, Space, Card, Typography, Empty, Popconfirm, Select, InputNumber, Tag, Divider } from 'antd';
+import { Button, Input, Space, Card, Typography, Empty, Popconfirm, Select, InputNumber, Tag, Divider, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, RobotOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../store/useProjectStore';
+import { aiFillField } from '../api';
 import type { CharacterParamDefinition } from '../types';
 
 const { Text } = Typography;
@@ -100,6 +101,36 @@ const WorldviewPage: React.FC = () => {
   // Controlled input state for category entry (per param index)
   const [categoryInputs, setCategoryInputs] = useState<Record<number, string>>({});
 
+  // AI fill state for worldview blocks
+  const [fillingBlockId, setFillingBlockId] = useState<string | null>(null);
+  const handleAIFillBlock = useCallback(
+    async (blockId: string) => {
+      if (!project) return;
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block) return;
+      setFillingBlockId(blockId);
+      try {
+        const result = await aiFillField({
+          project_id: project.projectId,
+          field_name: block.title || '世界观栏目',
+          existing_content: block.content,
+          node_type: 'worldview',
+        });
+        updateWorldBlock(blockId, { content: result.content });
+        if (result.analysis) {
+          message.info(result.analysis);
+        } else {
+          message.success('AI 填充完成');
+        }
+      } catch (e: any) {
+        message.error(`AI 填充失败: ${e?.message || e}`);
+      } finally {
+        setFillingBlockId(null);
+      }
+    },
+    [project, blocks, updateWorldBlock]
+  );
+
   const commitCategory = useCallback(
     (index: number, raw: string) => {
       const val = raw.trim();
@@ -143,9 +174,19 @@ const WorldviewPage: React.FC = () => {
               key={block.id}
               size="small"
               extra={
-                <Popconfirm title="确认删除?" onConfirm={() => handleDelete(block.id)}>
-                  <Button size="small" danger icon={<DeleteOutlined />} type="text" />
-                </Popconfirm>
+                <Space size={0}>
+                  <Button
+                    size="small"
+                    icon={<RobotOutlined />}
+                    type="text"
+                    loading={fillingBlockId === block.id}
+                    onClick={() => handleAIFillBlock(block.id)}
+                    title="AI 辅助填充此栏目内容"
+                  />
+                  <Popconfirm title="确认删除?" onConfirm={() => handleDelete(block.id)}>
+                    <Button size="small" danger icon={<DeleteOutlined />} type="text" />
+                  </Popconfirm>
+                </Space>
               }
               title={
                 <Input
