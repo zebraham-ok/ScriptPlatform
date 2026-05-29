@@ -5,7 +5,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from models.schemas import ProjectData, ProjectSummary, GraphData, PlotData
+from models.schemas import ProjectData, ProjectSummary, GraphData, PlotData, AIChatRecord, AIHistoryData
 
 
 USER_ID = "user1"
@@ -20,6 +20,10 @@ def _ensure_user_dir() -> str:
 
 def _project_path(project_id: str) -> str:
     return os.path.join(_ensure_user_dir(), f"{project_id}.json")
+
+
+def _history_path(project_id: str) -> str:
+    return os.path.join(_ensure_user_dir(), f"{project_id}_history.json")
 
 
 def _init_empty_project(title: str, project_id: str) -> ProjectData:
@@ -42,7 +46,7 @@ def list_projects() -> List[ProjectSummary]:
     user_dir = _ensure_user_dir()
     projects = []
     for filename in os.listdir(user_dir):
-        if filename.endswith(".json"):
+        if filename.endswith(".json") and not filename.endswith("_history.json"):
             try:
                 with open(os.path.join(user_dir, filename), "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -115,3 +119,34 @@ def patch_project(project_id: str, updates: dict) -> Optional[ProjectData]:
         json.dump(project_dict, f, ensure_ascii=False, indent=2)
 
     return ProjectData(**project_dict)
+
+
+# --- AI Chat History ---
+
+def load_ai_history(project_id: str) -> AIHistoryData:
+    """Load AI chat history for a project."""
+    path = _history_path(project_id)
+    if not os.path.exists(path):
+        return AIHistoryData(records=[])
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    records = [AIChatRecord(**r) for r in data.get("records", [])]
+    return AIHistoryData(records=records)
+
+
+def save_ai_record(project_id: str, record: AIChatRecord):
+    """Append a new AI chat record to history."""
+    path = _history_path(project_id)
+    history = load_ai_history(project_id)
+    history.records.append(record)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history.model_dump(), f, ensure_ascii=False, indent=2)
+
+
+def delete_ai_history(project_id: str) -> bool:
+    """Delete all AI chat history for a project."""
+    path = _history_path(project_id)
+    if not os.path.exists(path):
+        return False
+    os.remove(path)
+    return True

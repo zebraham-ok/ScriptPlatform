@@ -79,3 +79,21 @@ class AIGenerateRequest(BaseModel):
 
 class AIGenerateResponse(BaseModel):
     generated_text: str
+
+
+class AIChatRecord(BaseModel):
+    id: str
+    timestamp: str
+    page: str = ""
+    instruction: str = ""
+    template: str = ""
+    response: str = ""
+    model: str = ""
+
+
+class AIHistoryData(BaseModel):
+    records: List[AIChatRecord] = Field(default_factory=list)
+
+
+class AIHistoryResponse(BaseModel):
+    records: List[AIChatRecord]

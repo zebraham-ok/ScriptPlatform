@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
-import { Drawer, Input, Button, Select, Space, Typography, Spin, message } from 'antd';
-import { RobotOutlined, SendOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Drawer, Input, Button, Space, Typography, Spin, message, Tooltip } from 'antd';
+import { RobotOutlined, SendOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
-import { aiGenerate } from '../../api';
+import { aiGenerate, getAIHistory } from '../../api';
 import type { PageType } from '../../types';
 
 const { Text } = Typography;
-const { TextArea } = Input;
+
+interface AIChatRecord {
+  id: string;
+  timestamp: string;
+  page: string;
+  instruction: string;
+  template: string;
+  response: string;
+  model: string;
+}
 
 interface AIPanelProps {}
 
@@ -22,10 +31,34 @@ const AIPanel: React.FC<AIPanelProps> = () => {
   const { showAI, setShowAI, currentPage, project, selectedElementId, getGraphData } = useProjectStore();
   const [instruction, setInstruction] = useState('');
   const [template, setTemplate] = useState('');
-  const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
+  // History state
+  const [history, setHistory] = useState<AIChatRecord[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1); // -1 means "new" (input mode)
 
   const graphData = getGraphData();
+
+  // Load history when panel opens or project changes
+  const loadHistory = useCallback(async () => {
+    if (!project) return;
+    try {
+      const data = await getAIHistory(project.projectId);
+      setHistory(data.records || []);
+    } catch {
+      setHistory([]);
+    }
+  }, [project]);
+
+  useEffect(() => {
+    if (showAI) {
+      loadHistory();
+      setHistoryIndex(-1);
+      setInstruction('');
+      setTemplate('');
+    }
+  }, [showAI, loadHistory]);
+
+  const currentRecord = historyIndex >= 0 && historyIndex < history.length ? history[historyIndex] : null;
 
   const handleGenerate = async () => {
     if (!instruction.trim()) {
@@ -35,17 +68,19 @@ const AIPanel: React.FC<AIPanelProps> = () => {
     if (!project) return;
 
     setLoading(true);
-    setResult('');
 
     const context: any = {
       current_page: currentPage,
       selected_element_id: selectedElementId || '',
     };
 
-    // Build nearby elements context
-    if (currentPage === 'character' || currentPage === 'location' || currentPage === 'plot') {
+    if (project) {
+      context.project_data = project;
+    }
+
+    if (graphData.nodes && selectedElementId) {
       const selectedNode = graphData.nodes.find((n) => n.id === selectedElementId);
-      if (selectedNode && selectedElementId) {
+      if (selectedNode) {
         const connectedEdges = graphData.edges.filter(
           (e) => e.source === selectedElementId || e.target === selectedElementId
         );
@@ -64,19 +99,50 @@ const AIPanel: React.FC<AIPanelProps> = () => {
     }
 
     try {
-      const res = await aiGenerate(project.projectId, context, instruction, template || undefined);
-      setResult(res.generated_text);
+      await aiGenerate(project.projectId, context, instruction, template || undefined);
+      // Reload full history from backend to get the record with server-generated ID
+      await loadHistory();
+      // Point to the newest record
+      setHistoryIndex(-1);  // will be updated below after history reloads
     } catch (e: any) {
-      setResult('生成失败：' + (e?.message || '未知错误'));
+      message.error('生成失败：' + (e?.message || '未知错误'));
     } finally {
       setLoading(false);
     }
   };
 
+  // After history loads from handleGenerate, point to newest
+  useEffect(() => {
+    if (history.length > 0 && historyIndex === -1 && !loading) {
+      // After a new generation + reload, jump to newest
+      setHistoryIndex(history.length - 1);
+    }
+  }, [history.length]);
+
+  const goToPrev = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
+    }
+  };
+
+  const goToNext = () => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(historyIndex + 1);
+    }
+  };
+
+  const goToNew = () => {
+    setHistoryIndex(-1);
+    setInstruction('');
+    setTemplate('');
+  };
+
   const onClose = () => {
     setShowAI(false);
-    setResult('');
   };
+
+  // Derive display content
+  const displayContent = currentRecord ? currentRecord.response : '';
 
   return (
     <Drawer
@@ -87,44 +153,126 @@ const AIPanel: React.FC<AIPanelProps> = () => {
         </Space>
       }
       placement="right"
-      width={420}
+      width={480}
       open={showAI}
       onClose={onClose}
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
-        <div>
-          <Text strong style={{ fontSize: 13 }}>生成指令</Text>
-          <Input.TextArea
-            rows={3}
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            placeholder="例如：请为这个角色创作一个背景故事"
-            style={{ marginTop: 4 }}
-          />
-        </div>
+        {/* --- Input Area (shown when no history selected) --- */}
+        {!currentRecord && (
+          <>
+            <div>
+              <Text strong style={{ fontSize: 13 }}>生成指令</Text>
+              <Input.TextArea
+                rows={3}
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder="例如：请为这个角色创作一个背景故事"
+                style={{ marginTop: 4 }}
+              />
+            </div>
 
-        <div>
-          <Text strong style={{ fontSize: 13 }}>自定义提示词模板（可选）</Text>
-          <Input.TextArea
-            rows={4}
-            value={template}
-            onChange={(e) => setTemplate(e.target.value)}
-            placeholder="留空使用默认模板。可使用 {context_text} 和 {instruction} 占位符"
-            style={{ marginTop: 4 }}
-          />
-        </div>
+            <div>
+              <Text strong style={{ fontSize: 13 }}>自定义提示词模板（可选）</Text>
+              <Input.TextArea
+                rows={4}
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+                placeholder="留空使用默认模板"
+                style={{ marginTop: 4 }}
+              />
+            </div>
 
-        <Button
-          type="primary"
-          icon={<SendOutlined />}
-          onClick={handleGenerate}
-          loading={loading}
-          block
-        >
-          生成
-        </Button>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={handleGenerate}
+              loading={loading}
+              block
+            >
+              生成
+            </Button>
+          </>
+        )}
 
-        {result && (
+        {/* --- Pagination / Info bar --- */}
+        {history.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              padding: '6px 0',
+              borderBottom: currentRecord ? '1px solid #f0f0f0' : undefined,
+              borderTop: !currentRecord ? '1px solid #f0f0f0' : undefined,
+            }}
+          >
+            <Tooltip title="上一条">
+              <Button
+                size="small"
+                icon={<LeftOutlined />}
+                disabled={historyIndex <= 0}
+                onClick={goToPrev}
+              />
+            </Tooltip>
+
+            <Text style={{ fontSize: 13, minWidth: 80, textAlign: 'center' }}>
+              {currentRecord
+                ? `第 ${historyIndex + 1}/${history.length} 条`
+                : (
+                  <Button type="link" size="small" onClick={goToNew} style={{ padding: 0 }}>
+                    新建对话
+                  </Button>
+                )}
+            </Text>
+
+            <Tooltip title="下一条">
+              <Button
+                size="small"
+                icon={<RightOutlined />}
+                disabled={historyIndex >= history.length - 1 || historyIndex < 0}
+                onClick={goToNext}
+              />
+            </Tooltip>
+
+            {currentRecord && (
+              <>
+                <div style={{ width: 1, height: 20, background: '#e8e8e8' }} />
+                <Tooltip title="返回新建">
+                  <Button size="small" type="dashed" onClick={goToNew}>
+                    新建
+                  </Button>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* --- History record meta --- */}
+        {currentRecord && (
+          <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+            <div>
+              <Text type="secondary">页面：</Text>
+              {pageLabelMap[currentRecord.page as PageType] || currentRecord.page}
+            </div>
+            <div>
+              <Text type="secondary">指令：</Text>
+              {currentRecord.instruction}
+            </div>
+            <div>
+              <Text type="secondary">时间：</Text>
+              {new Date(currentRecord.timestamp).toLocaleString()}
+            </div>
+            <div>
+              <Text type="secondary">模型：</Text>
+              {currentRecord.model}
+            </div>
+          </div>
+        )}
+
+        {/* --- Result display --- */}
+        {currentRecord && displayContent && (
           <div
             style={{
               flex: 1,
@@ -138,10 +286,11 @@ const AIPanel: React.FC<AIPanelProps> = () => {
               lineHeight: 1.6,
             }}
           >
-            {result}
+            {displayContent}
           </div>
         )}
 
+        {/* --- Loading --- */}
         {loading && (
           <div style={{ textAlign: 'center', padding: 40 }}>
             <Spin tip="AI 正在创作中...">

@@ -4,7 +4,7 @@ const API_BASE = 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: 180000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -53,6 +53,11 @@ export async function aiGenerate(
     prompt_template: promptTemplate || undefined,
   });
   return res.data;
+}
+
+export async function getAIHistory(projectId: string) {
+  const res = await api.get(`/ai/history/${projectId}`);
+  return res.data; // { records: AIChatRecord[] }
 }
 
 export default api;
