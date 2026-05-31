@@ -5,13 +5,14 @@ import re
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from models.schemas import (
     AIGenerateRequest, AIGenerateResponse, AIChatRecord, AIHistoryResponse,
     AIModifyRequest, AIModifyResponse, AIUndoResponse,
     AIFillFieldRequest, AIFillFieldResponse,
 )
 from services import ai_service, file_store
+from routers.auth import get_current_user
 
 router = APIRouter()
 
@@ -110,15 +111,7 @@ def _try_parse(raw: str, expected_keys: Optional[list] = None) -> Optional[dict]
 
 
 def _extract_json_from_response(text: str, expected_keys: Optional[list] = None) -> dict:
-    """Robust JSON extraction from AI response with multiple fallback strategies.
-
-    Args:
-        text: The raw AI response text
-        expected_keys: Optional list of keys that must be present in the extracted JSON
-
-    Returns:
-        dict: Extracted JSON data
-    """
+    """Robust JSON extraction from AI response with multiple fallback strategies."""
     if not text or not isinstance(text, str):
         return {}
 
@@ -129,7 +122,7 @@ def _extract_json_from_response(text: str, expected_keys: Optional[list] = None)
         if result is not None:
             return result
 
-    # Strategy 1: ```json code blocks (try all, pick first valid)
+    # Strategy 1: ```json code blocks
     json_blocks = re.findall(r'```json\s*([\s\S]*?)\s*```', text)
     for block in reversed(json_blocks):
         result = _try_parse(block.strip(), expected_keys)
@@ -157,7 +150,7 @@ def _extract_json_from_response(text: str, expected_keys: Optional[list] = None)
     braces = _find_outer_braces(text)
     brackets = _find_outer_brackets(text)
     all_blocks = braces + brackets
-    all_blocks.sort(key=len, reverse=True)  # Longest first
+    all_blocks.sort(key=len, reverse=True)
 
     for block in all_blocks:
         result = _try_parse(block, expected_keys)
@@ -170,23 +163,19 @@ def _extract_json_from_response(text: str, expected_keys: Optional[list] = None)
     except json.JSONDecodeError:
         pass
 
-    raise ValueError(f"无法从AI返回中提取有效JSON")
+    raise ValueError("无法从AI返回中提取有效JSON")
 
 
 @router.post("/ai/generate", response_model=AIGenerateResponse)
-async def ai_generate(body: AIGenerateRequest):
-    """Generate content using AI based on full project context. Saves to history."""
-    # Verify project exists
-    project = file_store.get_project(body.project_id)
+async def ai_generate(body: AIGenerateRequest, username: str = Depends(get_current_user)):
+    """Generate content using AI based on full project context."""
+    project = file_store.get_project(username, body.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     model = project.aiConfig.model if project.aiConfig else "qwen-plus"
 
-    # Send the ENTIRE project JSON to the AI for comprehensive context
     context = {**body.context}
-
-    # Attach full project data so AI sees all characters, locations, plot, worldview, items
     context["project_data"] = _serialize_project(project)
 
     generated = ai_service.generate_text(
@@ -196,7 +185,6 @@ async def ai_generate(body: AIGenerateRequest):
         model=model,
     )
 
-    # Save to history
     current_page = body.context.get("current_page", "")
     record = AIChatRecord(
         id=uuid.uuid4().hex[:12],
@@ -207,33 +195,31 @@ async def ai_generate(body: AIGenerateRequest):
         response=generated,
         model=model,
     )
-    file_store.save_ai_record(body.project_id, record)
+    file_store.save_ai_record(username, body.project_id, record)
 
     return AIGenerateResponse(generated_text=generated)
 
 
 @router.get("/ai/history/{project_id}", response_model=AIHistoryResponse)
-async def get_ai_history(project_id: str):
+async def get_ai_history(project_id: str, username: str = Depends(get_current_user)):
     """Load all AI chat history for a project."""
-    project = file_store.get_project(project_id)
+    project = file_store.get_project(username, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    history = file_store.load_ai_history(project_id)
+    history = file_store.load_ai_history(username, project_id)
     return AIHistoryResponse(records=history.records)
 
 
-# Valid top-level keys in ProjectData — used to validate extracted JSON
 _PROJECT_TOP_KEYS = ["title", "worldSetting", "characterParams", "characters", "locations", "items", "plot", "mechanics", "aiConfig"]
 
 
 @router.post("/ai/modify", response_model=AIModifyResponse)
-async def ai_modify(body: AIModifyRequest):
-    """Let AI directly modify the project JSON. Creates a backup first for undo."""
-    project = file_store.get_project(body.project_id)
+async def ai_modify(body: AIModifyRequest, username: str = Depends(get_current_user)):
+    """Let AI directly modify the project JSON."""
+    project = file_store.get_project(username, body.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Use qwen-max for modify mode (independent of aiConfig)
     model = "qwen-max"
     current_page = body.context.get("current_page", "")
     raw_response = ""
@@ -241,7 +227,7 @@ async def ai_modify(body: AIModifyRequest):
     updated_project_data = None
 
     # 1. Backup current project
-    file_store.backup_project(body.project_id)
+    file_store.backup_project(username, body.project_id)
     print(f"[修改模式] 项目 {body.project_id} 已备份")
 
     # 2. Build context
@@ -259,7 +245,7 @@ async def ai_modify(body: AIModifyRequest):
         error_message = f"AI调用失败: {str(e)}"
         print(f"[修改模式] {error_message}")
 
-    # 4. Extract partial JSON from response (AI only returns changed fields)
+    # 4. Extract partial JSON from response
     if error_message is None:
         print(f"[修改模式] AI原始返回长度: {len(raw_response)} 字符")
         print(f"[修改模式] AI返回前200字符: {raw_response[:200]}")
@@ -272,14 +258,12 @@ async def ai_modify(body: AIModifyRequest):
         else:
             print(f"[修改模式] 提取到的部分JSON keys: {list(partial_dict.keys())}")
 
-            # Validate that extracted keys are known project fields
             unknown_keys = [k for k in partial_dict.keys() if k not in _PROJECT_TOP_KEYS]
             if unknown_keys:
                 print(f"[修改模式] 警告: 发现未知key {unknown_keys}，尝试继续")
 
-            # 5. Apply changes via deep-merge (patch)
             try:
-                updated_project = file_store.patch_project(body.project_id, partial_dict)
+                updated_project = file_store.patch_project(username, body.project_id, partial_dict)
             except Exception as e:
                 error_message = f"应用修改到项目时出错: {str(e)}"
                 print(f"[修改模式] patch_project失败: {e}")
@@ -291,7 +275,7 @@ async def ai_modify(body: AIModifyRequest):
                     print(f"[修改模式] 项目修改成功！更新时间: {updated_project.updatedAt}")
                     updated_project_data = _serialize_project(updated_project)
 
-    # 6. Always save to history (success or failure)
+    # 5. Always save to history
     record = AIChatRecord(
         id=uuid.uuid4().hex[:12],
         timestamp=datetime.now().isoformat(),
@@ -302,7 +286,7 @@ async def ai_modify(body: AIModifyRequest):
         model=model,
     )
     try:
-        file_store.save_ai_record(body.project_id, record)
+        file_store.save_ai_record(username, body.project_id, record)
         print(f"[修改模式] 历史记录已保存 (id={record.id})")
     except Exception as e:
         print(f"[修改模式] 保存历史记录失败: {e}")
@@ -318,12 +302,12 @@ async def ai_modify(body: AIModifyRequest):
 
 
 @router.post("/ai/undo/{project_id}", response_model=AIUndoResponse)
-async def ai_undo(project_id: str):
+async def ai_undo(project_id: str, username: str = Depends(get_current_user)):
     """Undo the last AI modification by restoring from backup."""
-    if not file_store.has_backup(project_id):
+    if not file_store.has_backup(username, project_id):
         return AIUndoResponse(success=False, error="没有可撤销的备份")
 
-    restored = file_store.restore_backup(project_id)
+    restored = file_store.restore_backup(username, project_id)
     if restored is None:
         return AIUndoResponse(success=False, error="恢复备份失败")
 
@@ -334,9 +318,9 @@ async def ai_undo(project_id: str):
 
 
 @router.post("/ai/fill-field", response_model=AIFillFieldResponse)
-async def ai_fill_field(body: AIFillFieldRequest):
-    """AI fills a single field based on full project context. Returns analysis + content."""
-    project = file_store.get_project(body.project_id)
+async def ai_fill_field(body: AIFillFieldRequest, username: str = Depends(get_current_user)):
+    """AI fills a single field based on full project context."""
+    project = file_store.get_project(username, body.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 

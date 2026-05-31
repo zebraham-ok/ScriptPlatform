@@ -8,6 +8,7 @@ import {
   NodeIndexOutlined,
   ToolOutlined,
   SettingOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import { exportFullProject } from '../../utils/export';
@@ -20,6 +21,8 @@ const { Text } = Typography;
 interface MainLayoutProps {
   children: React.ReactNode;
   onProjectSelect: () => void;
+  loggedUser: { username: string; displayName: string } | null;
+  onLogout: () => void;
 }
 
 const tabItems = [
@@ -31,7 +34,7 @@ const tabItems = [
   { key: 'mechanics' as PageType, label: '功能', icon: <SettingOutlined /> },
 ];
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, loggedUser, onLogout }) => {
   const { project, currentPage, setCurrentPage, loading } = useProjectStore();
 
   const handleTabChange = useCallback(
@@ -82,6 +85,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) =>
         />
 
         <Space>
+          {loggedUser && (
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              <UserOutlined /> {loggedUser.displayName}
+            </Text>
+          )}
           <Button onClick={onProjectSelect} size="small">
             项目列表
           </Button>
@@ -92,6 +100,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect }) =>
             onClick={() => project && exportFullProject(project)}
           >
             导出完整项目
+          </Button>
+          <Button
+            icon={<LogoutOutlined />}
+            size="small"
+            onClick={onLogout}
+          >
+            退出
           </Button>
         </Space>
       </Header>

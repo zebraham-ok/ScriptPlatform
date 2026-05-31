@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Modal, Input, List, Button, Space, Typography, Spin, message, Popconfirm } from 'antd';
-import { PlusOutlined, DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import { Modal, Input, List, Button, Space, Typography, Spin, message, Popconfirm, Form } from 'antd';
+import { PlusOutlined, DeleteOutlined, FolderOpenOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import MainLayout from './components/Layout/MainLayout';
 import CharacterPage from './pages/CharacterPage';
 import LocationPage from './pages/LocationPage';
@@ -10,7 +10,7 @@ import ItemPage from './pages/ItemPage';
 import MechanicsPage from './pages/MechanicsPage';
 import AIPanel from './components/AIPanel/AIPanel';
 import { useProjectStore } from './store/useProjectStore';
-import { listProjects, createProject, deleteProject } from './api';
+import { listProjects, createProject, deleteProject, login, getToken, setToken, clearToken, getStoredUser, setStoredUser } from './api';
 
 const { Text } = Typography;
 
@@ -25,11 +25,45 @@ const App: React.FC = () => {
     clearProject,
   } = useProjectStore();
 
+  // --- Login state ---
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedUser, setLoggedUser] = useState<{ username: string; displayName: string } | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // --- Project selector state ---
   const [showSelector, setShowSelector] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [loadingList, setLoadingList] = useState(false);
 
+  // Check for existing token on mount
+  useEffect(() => {
+    const token = getToken();
+    const user = getStoredUser();
+    if (token && user) {
+      setLoggedIn(true);
+      setLoggedUser(user);
+    } else {
+      setShowLogin(true);
+    }
+  }, []);
+
+  // Listen for 401 unauthorized events
+  useEffect(() => {
+    const handler = () => {
+      setLoggedIn(false);
+      setLoggedUser(null);
+      clearProject();
+      setShowLogin(true);
+    };
+    window.addEventListener('auth:unauthorized', handler);
+    return () => window.removeEventListener('auth:unauthorized', handler);
+  }, [clearProject]);
+
   const fetchProjects = useCallback(async () => {
+    if (!loggedIn) return;
     setLoadingList(true);
     try {
       const data = await listProjects();
@@ -39,29 +73,64 @@ const App: React.FC = () => {
     } finally {
       setLoadingList(false);
     }
-  }, [setProjectList]);
+  }, [loggedIn, setProjectList]);
 
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    if (loggedIn) {
+      fetchProjects();
+    }
+  }, [loggedIn, fetchProjects]);
 
-  // Show selector on first load if no project
+  // Show project selector if logged in and no project
   useEffect(() => {
-    if (!project) {
+    if (loggedIn && !project) {
       setShowSelector(true);
     }
-  }, []);
+  }, [loggedIn]);
+
+  const handleLogin = async () => {
+    if (!loginUsername.trim() || !loginPassword.trim()) return;
+    setLoginLoading(true);
+    try {
+      const result = await login(loginUsername.trim(), loginPassword);
+      setToken(result.token);
+      setStoredUser({ username: result.username, displayName: result.displayName });
+      setLoggedIn(true);
+      setLoggedUser({ username: result.username, displayName: result.displayName });
+      setShowLogin(false);
+      message.success(`欢迎，${result.displayName}！`);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || '登录失败';
+      message.error(msg);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setLoggedIn(false);
+    setLoggedUser(null);
+    clearProject();
+    setShowLogin(true);
+    setShowSelector(false);
+    message.info('已退出登录');
+  };
 
   const handleCreate = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      message.warning('请输入项目标题');
+      return;
+    }
     try {
       const data = await createProject(newTitle.trim());
       setProject(data);
       setNewTitle('');
       setShowSelector(false);
       message.success('项目创建成功');
-    } catch (e) {
-      message.error('创建项目失败');
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || '创建项目失败';
+      message.error(msg);
     }
   };
 
@@ -104,21 +173,58 @@ const App: React.FC = () => {
 
   return (
     <>
-      <MainLayout onProjectSelect={() => setShowSelector(true)}>
+      <MainLayout
+        onProjectSelect={() => setShowSelector(true)}
+        loggedUser={loggedUser}
+        onLogout={handleLogout}
+      >
         {renderPage()}
       </MainLayout>
 
       <AIPanel />
 
+      {/* --- Login Modal --- */}
+      <Modal
+        title="用户登录"
+        open={showLogin}
+        closable={false}
+        footer={null}
+        width={400}
+        maskClosable={false}
+      >
+        <Form layout="vertical" onFinish={handleLogin}>
+          <Form.Item label="用户名">
+            <Input
+              prefix={<UserOutlined />}
+              value={loginUsername}
+              onChange={(e) => setLoginUsername(e.target.value)}
+              placeholder="请输入用户名"
+              autoFocus
+            />
+          </Form.Item>
+          <Form.Item label="密码">
+            <Input.Password
+              prefix={<LockOutlined />}
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              placeholder="请输入密码"
+              onPressEnter={handleLogin}
+            />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={loginLoading}>
+            登录
+          </Button>
+        </Form>
+      </Modal>
+
+      {/* --- Project Selector Modal --- */}
       <Modal
         title="项目列表"
         open={showSelector}
-        onCancel={() => {
-          if (project) setShowSelector(false);
-        }}
+        onCancel={() => setShowSelector(false)}
         footer={null}
         width={500}
-        maskClosable={!!project}
+        maskClosable={true}
       >
         <div style={{ marginBottom: 16 }}>
           <Space.Compact style={{ width: '100%' }}>
