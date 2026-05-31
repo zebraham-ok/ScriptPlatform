@@ -3,8 +3,10 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from routers import projects, ai, auth
 
 app = FastAPI(
@@ -22,6 +24,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Private Network Access middleware (required by Chrome when accessing from public IP)
+class PrivateNetworkMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+        return response
+
+app.add_middleware(PrivateNetworkMiddleware)
+
 # Include routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
@@ -35,4 +46,6 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True for local dev; set RELOAD=false for production
+    use_reload = os.environ.get("RELOAD", "true").lower() == "true"
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=use_reload)

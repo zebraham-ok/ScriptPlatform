@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000/api';
+// Use env var if set (for deployed server), otherwise default to relative path (works with CRA proxy or nginx)
+const API_BASE = process.env.REACT_APP_API_BASE || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
