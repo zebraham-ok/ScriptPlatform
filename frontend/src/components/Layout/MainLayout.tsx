@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { Layout, Button, Tabs, Space, Typography, Spin } from 'antd';
 import {
   ExportOutlined,
+  ImportOutlined,
   UserOutlined,
   EnvironmentOutlined,
   BookOutlined,
@@ -21,6 +22,7 @@ const { Text } = Typography;
 interface MainLayoutProps {
   children: React.ReactNode;
   onProjectSelect: () => void;
+  onImportProject: () => void;
   loggedUser: { username: string; displayName: string } | null;
   onLogout: () => void;
 }
@@ -34,7 +36,7 @@ const tabItems = [
   { key: 'mechanics' as PageType, label: '功能', icon: <SettingOutlined /> },
 ];
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, loggedUser, onLogout }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, onImportProject, loggedUser, onLogout }) => {
   const { project, currentPage, setCurrentPage, loading } = useProjectStore();
 
   const handleTabChange = useCallback(
@@ -90,6 +92,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, logg
               <UserOutlined /> {loggedUser.displayName}
             </Text>
           )}
+          <Button
+            icon={<ImportOutlined />}
+            size="small"
+            onClick={onImportProject}
+          >
+            导入项目
+          </Button>
           <Button onClick={onProjectSelect} size="small">
             项目列表
           </Button>

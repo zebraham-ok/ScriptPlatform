@@ -87,6 +87,11 @@ export async function createProject(title: string) {
   return res.data;
 }
 
+export async function importProject(data: any) {
+  const res = await api.post('/projects/import', { data });
+  return res.data;
+}
+
 export async function getProject(projectId: string) {
   const res = await api.get(`/projects/${projectId}`);
   return res.data;

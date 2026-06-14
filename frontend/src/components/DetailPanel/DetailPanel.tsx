@@ -1101,7 +1101,7 @@ const NodeEditForm: React.FC<NodeEditFormProps> = ({
                 style={{ flex: 1 }}
                 value={key}
                 onChange={(e) => onPotentialActionChange(key, e.target.value, value)}
-                placeholder="行动名"
+                placeholder="行动名（会呈现给玩家）"
               />
               <Input
                 size="small"

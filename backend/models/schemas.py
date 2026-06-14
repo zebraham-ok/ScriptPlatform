@@ -106,6 +106,10 @@ class CreateProjectRequest(BaseModel):
     title: str = "新项目"
 
 
+class ImportProjectRequest(BaseModel):
+    data: Dict[str, Any]
+
+
 class AIGenerateRequest(BaseModel):
     project_id: str
     context: Dict[str, Any] = Field(default_factory=dict)

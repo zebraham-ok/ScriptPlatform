@@ -79,6 +79,62 @@ def create_project(user_id: str, title: str) -> ProjectData:
     return project
 
 
+def import_project(user_id: str, data: dict) -> ProjectData:
+    """Import a project from external JSON data.
+    
+    Normalizes the imported data:
+    - Generates a new projectId (ignores whatever is in the file)
+    - Normalizes title (uses "未命名项目" if missing)
+    - Fills in any missing fields with defaults
+    - Sets updatedAt to current time
+    """
+    now = datetime.now().isoformat()
+
+    # Generate a brand new projectId to avoid collisions
+    new_project_id = uuid.uuid4().hex[:12]
+
+    # Build a clean project dict with sensible defaults for any missing fields
+    normalized = {
+        "projectId": new_project_id,
+        "title": str(data.get("title", "")).strip() or "未命名项目",
+        "worldSetting": data.get("worldSetting", []),
+        "characterParams": data.get("characterParams", []),
+        "characters": data.get("characters", {"nodes": [], "edges": []}),
+        "locations": data.get("locations", {"nodes": [], "edges": []}),
+        "items": data.get("items", {"nodes": [], "edges": []}),
+        "plot": data.get("plot", {
+            "initialCheckpoint": "",
+            "endCheckpoints": [],
+            "graph": {"nodes": [], "edges": []},
+        }),
+        "mechanics": data.get("mechanics", {"checks": [], "votes": []}),
+        "aiConfig": data.get("aiConfig", None),
+        "updatedAt": now,
+    }
+
+    # Ensure graph-like fields have at minimum {nodes, edges}
+    for graph_key in ["characters", "locations", "items"]:
+        if isinstance(normalized[graph_key], dict):
+            normalized[graph_key].setdefault("nodes", [])
+            normalized[graph_key].setdefault("edges", [])
+
+    if isinstance(normalized["plot"], dict):
+        normalized["plot"].setdefault("initialCheckpoint", "")
+        normalized["plot"].setdefault("endCheckpoints", [])
+        if "graph" not in normalized["plot"] or not isinstance(normalized["plot"]["graph"], dict):
+            normalized["plot"]["graph"] = {"nodes": [], "edges": []}
+        else:
+            normalized["plot"]["graph"].setdefault("nodes", [])
+            normalized["plot"]["graph"].setdefault("edges", [])
+
+    # Validate through Pydantic model
+    project = ProjectData(**normalized)
+
+    # Save to user's directory
+    save_project(user_id, new_project_id, project)
+    return project
+
+
 def save_project(user_id: str, project_id: str, project: ProjectData):
     """Full save of a project."""
     project.updatedAt = datetime.now().isoformat()

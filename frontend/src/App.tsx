@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Modal, Input, List, Button, Space, Typography, Spin, message, Popconfirm, Form } from 'antd';
 import { PlusOutlined, DeleteOutlined, FolderOpenOutlined, UserOutlined, LockOutlined } from '@ant-design/icons';
 import MainLayout from './components/Layout/MainLayout';
@@ -10,7 +10,7 @@ import ItemPage from './pages/ItemPage';
 import MechanicsPage from './pages/MechanicsPage';
 import AIPanel from './components/AIPanel/AIPanel';
 import { useProjectStore } from './store/useProjectStore';
-import { listProjects, createProject, deleteProject, login, getToken, setToken, clearToken, getStoredUser, setStoredUser } from './api';
+import { listProjects, createProject, deleteProject, importProject, login, getToken, setToken, clearToken, getStoredUser, setStoredUser } from './api';
 
 const { Text } = Typography;
 
@@ -37,6 +37,10 @@ const App: React.FC = () => {
   const [showSelector, setShowSelector] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [loadingList, setLoadingList] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // Hidden file input for importing project JSON
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check for existing token on mount
   useEffect(() => {
@@ -152,6 +156,55 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Import project ---
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input so same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    // Validate file extension
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      message.error('请选择 .json 文件');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      // Read file content
+      const text = await file.text();
+      let jsonData: any;
+      try {
+        jsonData = JSON.parse(text);
+      } catch {
+        message.error('JSON 解析失败，请检查文件格式');
+        setImporting(false);
+        return;
+      }
+
+      // Send to backend for import (backend normalizes the data)
+      const importedProject = await importProject(jsonData);
+
+      // Set as current project and refresh list
+      setProject(importedProject);
+      setShowSelector(false);
+      await fetchProjects();
+      message.success(`项目「${importedProject.title}」导入成功！`);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || '导入项目失败';
+      message.error(msg);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'character':
@@ -175,6 +228,7 @@ const App: React.FC = () => {
     <>
       <MainLayout
         onProjectSelect={() => setShowSelector(true)}
+        onImportProject={handleImportClick}
         loggedUser={loggedUser}
         onLogout={handleLogout}
       >
@@ -182,6 +236,15 @@ const App: React.FC = () => {
       </MainLayout>
 
       <AIPanel />
+
+      {/* Hidden file input for importing project JSON */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
 
       {/* --- Login Modal --- */}
       <Modal
@@ -238,6 +301,16 @@ const App: React.FC = () => {
               创建
             </Button>
           </Space.Compact>
+          <div style={{ marginTop: 8 }}>
+            <Button
+              icon={<PlusOutlined />}
+              loading={importing}
+              onClick={handleImportClick}
+              block
+            >
+              从 JSON 文件导入项目
+            </Button>
+          </div>
         </div>
 
         <Spin spinning={loadingList}>

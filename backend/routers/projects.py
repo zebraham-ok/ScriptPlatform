@@ -5,6 +5,7 @@ from models.schemas import (
     ProjectData,
     ProjectSummary,
     CreateProjectRequest,
+    ImportProjectRequest,
 )
 from services import file_store
 from routers.auth import get_current_user
@@ -22,6 +23,18 @@ async def list_projects(username: str = Depends(get_current_user)):
 async def create_project(body: CreateProjectRequest, username: str = Depends(get_current_user)):
     """Create a new project."""
     return file_store.create_project(username, body.title)
+
+
+@router.post("/projects/import", response_model=ProjectData)
+async def import_project(body: ImportProjectRequest, username: str = Depends(get_current_user)):
+    """Import a project from external JSON data.
+    
+    Normalizes naming and saves under the logged-in user's directory.
+    """
+    try:
+        return file_store.import_project(username, body.data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"导入失败：{str(e)}")
 
 
 @router.get("/projects/{project_id}", response_model=ProjectData)
