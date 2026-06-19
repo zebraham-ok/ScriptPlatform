@@ -1,0 +1,36 @@
+{
+  "name": "script-builder-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5",
+    "antd": "^5.12.0",
+    "@ant-design/icons": "^5.2.6",
+    "zustand": "^4.4.7",
+    "reactflow": "^11.10.1",
+    "axios": "^1.6.2",
+    "lodash": "^4.17.21",
+    "@uiw/react-md-editor": "^4.0.3",
+    "uuid": "^9.0.0"
+  },
+  "proxy": "http://localhost:8000",
+  "devDependencies": {
+    "@types/react": "^18.2.42",
+    "@types/react-dom": "^18.2.17",
+    "@types/lodash": "^4.14.202",
+    "@types/uuid": "^9.0.7"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "build:clean": "rimraf node_modules/.cache & rimraf build & react-scripts build",
+    "serve:build": "node proxy-server.js"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  }
+}
