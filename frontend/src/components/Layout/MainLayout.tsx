@@ -10,6 +10,9 @@ import {
   ToolOutlined,
   SettingOutlined,
   LogoutOutlined,
+  ThunderboltOutlined,
+  ShopOutlined,
+  CloudUploadOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import { exportFullProject } from '../../utils/export';
@@ -23,8 +26,13 @@ interface MainLayoutProps {
   children: React.ReactNode;
   onProjectSelect: () => void;
   onImportProject: () => void;
+  onGoToPlaza: () => void;
+  onQuickStart: () => void;
+  onTryPlay: () => void;
+  onPublishScript: () => void;
   loggedUser: { username: string; displayName: string } | null;
   onLogout: () => void;
+  hasProject: boolean;
 }
 
 const tabItems = [
@@ -36,7 +44,11 @@ const tabItems = [
   { key: 'mechanics' as PageType, label: '功能', icon: <SettingOutlined /> },
 ];
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, onImportProject, loggedUser, onLogout }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({
+  children, onProjectSelect, onImportProject,
+  onGoToPlaza, onQuickStart, onTryPlay, onPublishScript,
+  loggedUser, onLogout, hasProject,
+}) => {
   const { project, currentPage, setCurrentPage, loading } = useProjectStore();
 
   const handleTabChange = useCallback(
@@ -92,6 +104,39 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onProjectSelect, onIm
               <UserOutlined /> {loggedUser.displayName}
             </Text>
           )}
+          {/* Game mode entry buttons */}
+          <Button
+            icon={<ThunderboltOutlined />}
+            size="small"
+            style={{ color: '#f59e0b', borderColor: '#f59e0b' }}
+            onClick={onQuickStart}
+          >
+            快速开局
+          </Button>
+          <Button
+            icon={<ShopOutlined />}
+            size="small"
+            onClick={onGoToPlaza}
+          >
+            广场
+          </Button>
+          <Button
+            icon={<ThunderboltOutlined />}
+            size="small"
+            type="primary"
+            disabled={!hasProject}
+            onClick={onTryPlay}
+          >
+            试玩
+          </Button>
+          <Button
+            icon={<CloudUploadOutlined />}
+            size="small"
+            disabled={!hasProject}
+            onClick={onPublishScript}
+          >
+            发布
+          </Button>
           <Button
             icon={<ImportOutlined />}
             size="small"

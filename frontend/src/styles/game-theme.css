@@ -1,0 +1,175 @@
+/* ========================================
+   游戏模式暗色主题 + 动画
+   来源：BUMENGweb-main 视觉风格
+   ======================================== */
+
+/* --- 游戏模式基础样式 --- */
+.game-mode {
+  @apply min-h-screen bg-game-bg text-white;
+}
+
+.game-panel {
+  @apply bg-game-panel border border-game-border rounded-lg;
+}
+
+.game-text {
+  @apply text-game-text;
+}
+
+.game-muted {
+  @apply text-game-muted;
+}
+
+.game-accent {
+  @apply text-game-accent;
+}
+
+.game-link {
+  @apply text-game-link hover:underline;
+}
+
+/* --- DM 消息样式 --- */
+.dm-message {
+  @apply bg-slate-800 border-l-4 border-amber-500 p-4 rounded-r-lg my-2;
+}
+
+.dm-message .dm-label {
+  @apply text-amber-400 font-bold text-sm mb-1;
+}
+
+/* --- 角色卡样式 --- */
+.character-sheet {
+  @apply bg-slate-800 border border-slate-600 rounded-lg p-4;
+}
+
+.character-sheet .char-name {
+  @apply text-amber-400 text-lg font-bold;
+}
+
+.character-sheet .char-attr {
+  @apply text-slate-300 text-sm;
+}
+
+.character-sheet .char-attr-value {
+  @apply text-white font-mono;
+}
+
+/* --- 场景背景 --- */
+.scene-background {
+  @apply relative overflow-hidden rounded-lg;
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-description {
+  @apply absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4;
+}
+
+/* --- 骰子动效容器 --- */
+.dice-container {
+  @apply fixed inset-0 z-50 flex items-center justify-center pointer-events-none;
+}
+
+.dice-result {
+  @apply text-6xl font-bold text-amber-400;
+  text-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  animation: diceRoll 0.6s ease-out;
+}
+
+/* --- 回合切换横幅 --- */
+.round-banner {
+  @apply fixed top-0 left-0 right-0 z-40 py-3 text-center font-bold text-lg;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #1e293b;
+  animation: roundBannerIn 0.5s ease-out;
+}
+
+/* --- 结局卡片 --- */
+.ending-card {
+  @apply bg-slate-800 border border-amber-500/30 rounded-xl p-8 max-w-lg mx-auto text-center;
+  animation: fadeSlideUp 0.8s ease-out;
+}
+
+.ending-card .ending-title {
+  @apply text-3xl font-bold mb-4;
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* --- 行动输入区域 --- */
+.action-input-area {
+  @apply bg-slate-800 border-t border-slate-700 p-4;
+}
+
+.dm-options {
+  @apply flex flex-wrap gap-2 mt-2;
+}
+
+.dm-option-btn {
+  @apply px-3 py-1.5 text-sm rounded-full border border-slate-600 text-slate-300
+         hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer;
+}
+
+/* --- 脉冲光环（DM 思考中） --- */
+.dm-thinking {
+  @apply animate-pulse-ring;
+}
+
+/* --- 呼吸光效 --- */
+.breathing {
+  @apply animate-breathe;
+}
+
+/* --- 自定义滚动条 --- */
+.game-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.game-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.game-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+.game-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* --- 玩家状态指示 --- */
+.player-status {
+  @apply inline-flex items-center gap-1.5 text-xs;
+}
+
+.player-status .status-dot {
+  @apply w-2 h-2 rounded-full;
+}
+
+.player-status .status-dot.acted {
+  @apply bg-green-500;
+}
+
+.player-status .status-dot.waiting {
+  @apply bg-yellow-500 animate-pulse;
+}
+
+.player-status .status-dot.skipped {
+  @apply bg-slate-500;
+}
+
+/* --- 倒计时 --- */
+.turn-timer {
+  @apply text-sm font-mono;
+}
+
+.turn-timer.urgent {
+  @apply text-red-400 animate-pulse;
+}
+
+.turn-timer.normal {
+  @apply text-slate-400;
+}

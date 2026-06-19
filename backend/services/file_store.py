@@ -268,3 +268,54 @@ def restore_backup(user_id: str, project_id: str) -> Optional[ProjectData]:
     shutil.copy2(backup, _project_path(user_id, project_id))
     os.remove(backup)
     return get_project(user_id, project_id)
+
+
+# --- Plaza Index ---
+
+_PLAZA_INDEX_PATH = os.path.join(BASE_DIR, "plaza_index.json")
+_SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
+_plaza_lock = None  # lazy init in get_plaza_lock
+
+
+def _get_plaza_lock():
+    global _plaza_lock
+    if _plaza_lock is None:
+        import asyncio
+        _plaza_lock = asyncio.Lock()
+    return _plaza_lock
+
+
+def load_plaza_index() -> dict:
+    """Load the plaza index file."""
+    os.makedirs(BASE_DIR, exist_ok=True)
+    if not os.path.exists(_PLAZA_INDEX_PATH):
+        default = {"version": "1.0", "scripts": []}
+        with open(_PLAZA_INDEX_PATH, "w", encoding="utf-8") as f:
+            json.dump(default, f, ensure_ascii=False, indent=2)
+        return default
+    with open(_PLAZA_INDEX_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_plaza_index(index: dict):
+    """Save the plaza index file."""
+    os.makedirs(BASE_DIR, exist_ok=True)
+    with open(_PLAZA_INDEX_PATH, "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+
+
+def get_script_json(script_id: str) -> Optional[dict]:
+    """Load a published script JSON by ID."""
+    path = os.path.join(BASE_DIR, "scripts", f"{script_id}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_script_json(script_id: str, data: dict):
+    """Save a published script JSON."""
+    os.makedirs(_SCRIPTS_DIR, exist_ok=True)
+    path = os.path.join(_SCRIPTS_DIR, f"{script_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)

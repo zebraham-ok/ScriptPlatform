@@ -139,7 +139,8 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
-export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item' | 'mechanics';
+export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item' | 'mechanics'
+  | 'plaza' | 'game' | 'lobby' | 'role_select';
 
 export type SelectionType = 'node' | 'edge' | null;
 
@@ -153,4 +154,144 @@ export interface AIFillFieldRequest {
 export interface AIFillFieldResponse {
   content: string;
   analysis: string;
+}
+
+// ========================================
+//  Game Mode Types
+// ========================================
+
+export type GameStage = 'LOBBY' | 'GENERATE' | 'ROLE_SELECT' | 'PLAYING' | 'VOTE' | 'CHECK' | 'ENDING';
+
+export interface RoleDetail {
+  id: string;
+  name: string;
+  description: string;
+  identity: string;
+  appearance?: string;
+  personality?: string;
+  attributes?: Record<string, any>;
+  customizableAttributes?: Array<{
+    path: string;
+    displayName: string;
+    type: string;
+  }>;
+  numericAttributeCap?: number;
+}
+
+export interface GameRoomInfo {
+  roomId: string;
+  roomName: string;
+  mode: 'script' | 'sandbox' | 'import';
+  scriptId?: string | null;
+  scriptTitle: string;
+  stage: GameStage;
+  totalRounds: number;
+  owner: string;
+  shareUrl: string;
+}
+
+export interface PlayerInfo {
+  playerId: string;
+  nickname: string;
+  isGuest: boolean;
+  characterId: string | null;
+  characterName: string | null;
+  attributes: Record<string, any>;
+  isReady?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  type: 'player' | 'dm' | 'system' | 'narration' | 'dice' | 'private';
+  timestamp: number;
+  dmOptions?: string[];
+  narration?: string;
+  actionType?: 'normal' | 'check' | 'vote';
+  targetPlayerId?: string;  // for private messages
+}
+
+export interface SceneInfo {
+  location: string;
+  description: string;
+  imageUrl: string | null;
+  characters: string[];
+}
+
+export interface DiceResult {
+  id: string;
+  playerName: string;
+  target: string;
+  dice: number;
+  difficulty: number;
+  result: 'success' | 'failure';
+  timestamp: number;
+}
+
+export interface EndingData {
+  title: string;
+  description: string;
+  epilogue: string;
+  characterFates: Array<{
+    characterName: string;
+    fate: string;
+  }>;
+}
+
+export interface TurnInfo {
+  round: number;
+  phase: string;
+  timeRemaining: number;  // seconds
+  actedPlayers: string[];
+  skippedPlayers: string[];
+}
+
+export interface ScriptCardData {
+  id: string;
+  title: string;
+  author: string;
+  cover: string;
+  tags: string[];
+  rating: number;
+  playCount: number;
+  duration: string;
+  playerCount: string;
+  createTime: string;
+  isOfficial: boolean;
+}
+
+export interface ScriptListResponse {
+  total: number;
+  list: ScriptCardData[];
+  hasMore: boolean;
+}
+
+export interface CreateRoomParams {
+  mode: 'script' | 'sandbox' | 'import' | 'create';
+  editorJson?: any;
+  scriptId?: string;
+  worldview?: string;
+  rolePrefs?: string;
+  totalRounds?: number;
+}
+
+export interface CreateRoomResult {
+  success: boolean;
+  data: {
+    roomId: string;
+    mode: string;
+    scriptTitle: string;
+    shareUrl: string;
+  };
+}
+
+export interface JoinRoomResult {
+  success: boolean;
+  data: {
+    roomId: string;
+    playerId: string;
+    role: string;
+  };
 }

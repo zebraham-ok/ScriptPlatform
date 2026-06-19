@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 BUMENGweb-main/
+doc/
+backend/image_cache/
 
 # Build output
 frontend/build/

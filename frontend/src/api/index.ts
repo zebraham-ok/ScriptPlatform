@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Use env var if set (for deployed server), otherwise default to relative path (works with CRA proxy or nginx)
-const API_BASE = process.env.REACT_APP_API_BASE || '/api';
+// Use env var if set (for deployed server), otherwise default to relative path (works with Vite proxy or nginx)
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -141,6 +141,63 @@ export async function aiFillField(data: {
   node_type: string;
 }) {
   const res = await api.post('/ai/fill-field', data);
+  return res.data;
+}
+
+// ========================================
+//  Game API
+// ========================================
+
+export async function listScripts(params?: {
+  page?: number;
+  pageSize?: number;
+  tag?: string;
+  sort?: 'hot' | 'new' | 'rating';
+  keyword?: string;
+}) {
+  const res = await api.get('/game/scripts', { params });
+  return res.data;
+}
+
+export async function getScriptDetail(scriptId: string) {
+  const res = await api.get(`/game/scripts/${scriptId}`);
+  return res.data;
+}
+
+export async function publishScript(projectId: string) {
+  const res = await api.post('/game/scripts', { projectId });
+  return res.data;
+}
+
+export async function createGameRoom(data: {
+  mode: 'script' | 'sandbox' | 'import' | 'create';
+  scriptId?: string;
+  editorJson?: any;
+  worldview?: string;
+  rolePrefs?: string;
+  totalRounds?: number;
+}) {
+  const res = await api.post('/game/rooms', data);
+  return res.data;
+}
+
+export async function getRoomStatus(roomId: string) {
+  const res = await api.get(`/game/rooms/${roomId}`);
+  return res.data;
+}
+
+export async function joinRoomApi(roomId: string, nickname: string) {
+  const res = await api.post(`/game/rooms/${roomId}/join`, { nickname });
+  return res.data;
+}
+
+export async function importRoom(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await axios.post('/game/rooms/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  });
   return res.data;
 }
 

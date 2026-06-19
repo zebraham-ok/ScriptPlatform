@@ -3,7 +3,7 @@
 import os
 import json
 from typing import Optional
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 # Default prompt templates - standardized output format
 PROMPT_TEMPLATES = {
@@ -481,3 +481,138 @@ def fill_field(
         errors.append(f"OpenAI: {str(e)}")
 
     raise RuntimeError("所有 API 均不可用。\n" + "\n".join(errors))
+
+
+# ========================================
+#  Game Mode AI Client (DeepSeek primary, Qwen fallback)
+# ========================================
+
+_async_clients: dict = {}
+_sync_clients: dict = {}
+_active_provider: Optional[str] = None
+
+
+def _get_provider_config(provider: str) -> tuple:
+    """Get API key and base URL for a provider."""
+    if provider == "deepseek":
+        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    elif provider == "qwen":
+        api_key = os.environ.get("QWEN_API_KEY", "")
+        base_url = os.environ.get("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    else:  # openai
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        base_url = os.environ.get("OPENAI_BASE_URL", None)
+
+    return api_key, base_url
+
+
+def get_active_provider() -> Optional[str]:
+    """Return the active AI provider name ('deepseek', 'qwen', 'openai') or None."""
+    global _active_provider
+    if _active_provider:
+        return _active_provider
+
+    # Check DeepSeek first (primary)
+    api_key, _ = _get_provider_config("deepseek")
+    if api_key and api_key != "sk-your-deepseek-key-here":
+        _active_provider = "deepseek"
+        return _active_provider
+
+    # Check Qwen (fallback)
+    api_key, _ = _get_provider_config("qwen")
+    if api_key:
+        _active_provider = "qwen"
+        return _active_provider
+
+    # Check OpenAI (last resort)
+    api_key, _ = _get_provider_config("openai")
+    if api_key:
+        _active_provider = "openai"
+        return _active_provider
+
+    return None
+
+
+def get_default_model() -> str:
+    """Get the default model name for the active provider.
+
+    Respects env vars: DEEPSEEK_MODEL, QWEN_MODEL, OPENAI_MODEL.
+    """
+    provider = get_active_provider()
+    if provider == "deepseek":
+        return os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    elif provider == "qwen":
+        return os.environ.get("QWEN_MODEL", "qwen-turbo")
+    else:
+        return os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+
+def get_ai_client(provider: str = "deepseek") -> Optional[AsyncOpenAI]:
+    """
+    Get an async OpenAI-compatible client for game mode.
+    Used by LangGraph nodes (generate_node, dm_response_node, ending_node).
+
+    Auto-detects the best available provider (DeepSeek > Qwen > OpenAI).
+    Returns None if no API key is configured.
+    """
+    active = get_active_provider()
+    if active is None:
+        return None
+
+    api_key, base_url = _get_provider_config(active)
+
+    cache_key = f"{active}:{api_key[:8]}"
+    if cache_key not in _async_clients:
+        kwargs = {"api_key": api_key, "timeout": 180.0}
+        if base_url:
+            kwargs["base_url"] = base_url
+        _async_clients[cache_key] = AsyncOpenAI(**kwargs)
+
+    return _async_clients[cache_key]
+
+
+def get_sync_ai_client(provider: str = "deepseek") -> Optional[OpenAI]:
+    """Get a sync OpenAI-compatible client (for non-async code)."""
+    active = get_active_provider()
+    if active is None:
+        return None
+
+    api_key, base_url = _get_provider_config(active)
+
+    cache_key = f"sync:{active}:{api_key[:8]}"
+    if cache_key not in _sync_clients:
+        kwargs = {"api_key": api_key, "timeout": 180.0}
+        if base_url:
+            kwargs["base_url"] = base_url
+        _sync_clients[cache_key] = OpenAI(**kwargs)
+
+    return _sync_clients[cache_key]
+
+
+async def ai_chat(
+    messages: list,
+    model: Optional[str] = None,
+    temperature: float = 0.8,
+    max_tokens: int = 2000,
+) -> str:
+    """Send a chat completion request to the AI (async).
+
+    If model is not specified, auto-detects the correct model for the active provider.
+    """
+    if model is None:
+        model = get_default_model()
+
+    client = get_ai_client()
+    if client is None:
+        raise RuntimeError("没有可用的 AI API 密钥。请配置 DEEPSEEK_API_KEY 或 QWEN_API_KEY。")
+
+    print(f"[ai_chat] provider={get_active_provider()}, model={model}")
+
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content or ""

@@ -18,6 +18,44 @@ class NodeData(BaseModel):
     data: Dict[str, Any] = Field(default_factory=dict)
 
 
+# === Character-specific NodeData (for type-safe playable-role config) ===
+
+class AttributeConstraint(BaseModel):
+    """Constraint for player-customizable attributes."""
+    sum_min: Optional[int] = None     # 总属性值下限
+    sum_max: Optional[int] = None     # 总属性值上限
+    individual_min: Optional[int] = None  # 单项最小值
+    individual_max: Optional[int] = None  # 单项最大值
+
+
+class CharacterNodeData(BaseModel):
+    """Strongly-typed character node data used in editor character panel.
+    Stored inside NodeData.data dict; also usable standalone for validation.
+    """
+    # Basic character info
+    name: str = ""
+    description: str = ""
+    personality: str = ""
+    appearance: str = ""
+    background: str = ""
+    motivation: str = ""
+
+    # Attributes (name → description or initial value)
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+
+    # === Playable role config (multiplayer) ===
+    is_playable: bool = False             # 是否可作为玩家扮演角色
+    min_players: int = 0                  # 最少需要几位扮演者 (0=不限制)
+    max_players: int = 1                  # 最多容纳几位扮演者
+
+    # === Player-customizable attribute config ===
+    customizable_attributes: List[str] = Field(default_factory=list)  # 哪些属性可由玩家自定
+    attribute_constraints: Optional[AttributeConstraint] = None       # 属性约束
+
+    # === Custom fields (catch-all for any extra data) ===
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
 class EdgeData(BaseModel):
     id: str
     source: str
