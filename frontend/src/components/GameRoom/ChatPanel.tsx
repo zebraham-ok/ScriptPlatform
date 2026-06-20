@@ -23,7 +23,11 @@ const ChatPanel: React.FC = () => {
   })();
 
   const handleTypingComplete = useCallback((msgId: string) => {
-    setCompletedMessages(prev => new Set([...prev, msgId]));
+    setCompletedMessages(prev => {
+      const newSet = new Set(prev);
+      newSet.add(msgId);
+      return newSet;
+    });
   }, []);
 
   // Auto-scroll during typing and on new messages
