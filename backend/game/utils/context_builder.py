@@ -243,6 +243,16 @@ def build_dm_context(state: GameState) -> str:
     else:
         print(f"[context_builder] chat_history is EMPTY!")
 
+    # ── Final round: elevated ending ceremony ──
+    is_final_round = state.get("_is_final_round", False)
+    if is_final_round:
+        title = state.get("script_title", "剧本")
+        ceremony_prompt = f"""🎭 **这是结局对话！故事即将落幕！**
+
+当前已抵达《{title}》的最终节点。这是你作为DM的最后一次叙述，请以一定的仪式感完成这场演出，或是回顾，或是展望，或是含蓄。
+⚠️ 这之后游戏将正式结束，请给出一次完整、饱满、有分量的最终叙述，字数250-500字。"""
+        parts.append(ceremony_prompt)
+
     # DM notes
     plot_inspection = state.get("plot_inspection", {})
     if isinstance(plot_inspection, dict):

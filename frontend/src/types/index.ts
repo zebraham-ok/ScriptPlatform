@@ -242,12 +242,7 @@ export interface PendingVote {
 
 export interface EndingData {
   title: string;
-  description: string;
-  epilogue: string;
-  characterFates: Array<{
-    characterName: string;
-    fate: string;
-  }>;
+  endingLabel: string;
 }
 
 export interface TurnInfo {

@@ -220,9 +220,20 @@ def get_node_advancement_info(current_node: str, plot_graph: dict,
     node_names = plot_inspection.get("node_names", {})
     connections = plot_inspection.get("connections", {})
     end_checkpoints = plot_inspection.get("end_checkpoints", [])
+    label_to_id = plot_inspection.get("label_to_id", {})
 
-    current_name = node_names.get(current_node, current_node or "(未命名)")
-    is_ending = current_node in end_checkpoints if current_node else False
+    # ── 防御性解析：current_node 可能是 label 或含 ｜ 的名称 ──
+    resolved_cn = current_node
+    if current_node and current_node not in node_names and current_node not in connections:
+        # 尝试 ｜ 切割
+        if '｜' in current_node:
+            prefix = current_node.split('｜')[0].strip()
+            resolved_cn = label_to_id.get(prefix, resolved_cn)
+        # 纯 label 解析
+        resolved_cn = label_to_id.get(current_node, resolved_cn)
+
+    current_name = node_names.get(resolved_cn, current_node or "(未命名)")
+    is_ending = resolved_cn in end_checkpoints if resolved_cn else False
 
     # Build node data lookup from plot_graph nodes
     nodes_data = {}
@@ -233,7 +244,7 @@ def get_node_advancement_info(current_node: str, plot_graph: dict,
 
     # Collect valid next nodes with rich info from target node data
     next_nodes = []
-    raw_nexts = connections.get(current_node, [])
+    raw_nexts = connections.get(resolved_cn, [])
     for item in raw_nexts:
         tgt = item.get("target", "") if isinstance(item, dict) else item
         edge_label = item.get("label", "") if isinstance(item, dict) else ""
@@ -249,9 +260,9 @@ def get_node_advancement_info(current_node: str, plot_graph: dict,
         })
 
     return {
-        "current_node_id": current_node,
+        "current_node_id": resolved_cn or current_node,
         "current_node_name": current_name,
-        "current_node_data": nodes_data.get(current_node, {}),
+        "current_node_data": nodes_data.get(resolved_cn, {}),
         "next_nodes": next_nodes,
         "is_ending": is_ending,
     }
@@ -272,12 +283,19 @@ def validate_node_transition(current_node: str, target_node: str,
     label_to_id = plot_inspection.get("label_to_id", {})
 
     # Resolve labels → UUIDs (for DM-friendly label-based navigation)
+    # Also handle ｜-separated names (AI sometimes appends scene descriptions)
     if current_node and current_node not in node_names:
         resolved = label_to_id.get(current_node, "")
+        if not resolved and '｜' in current_node:
+            prefix = current_node.split('｜')[0].strip()
+            resolved = label_to_id.get(prefix, "")
         if resolved:
             current_node = resolved
     if target_node and target_node not in node_names:
         resolved = label_to_id.get(target_node, "")
+        if not resolved and '｜' in target_node:
+            prefix = target_node.split('｜')[0].strip()
+            resolved = label_to_id.get(prefix, "")
         if resolved:
             target_node = resolved
 

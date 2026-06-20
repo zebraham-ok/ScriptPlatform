@@ -93,4 +93,6 @@ class GameState(TypedDict, total=False):
     ending_reached: bool
     ending_data: Optional[dict]        # ending content
     _end_node_reached: bool            # deferred ending flag: end checkpoint hit, end after next DM response
+    _is_final_round: bool              # flag: AI should deliver an elevated, ceremonial final narration
+    _final_narration_delivered: bool   # flag: ceremony narration has been generated, can now end
     end_checkpoints: List[str]         # plot end checkpoint node IDs

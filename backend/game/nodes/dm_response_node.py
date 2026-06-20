@@ -107,6 +107,12 @@ async def dm_response_node(state: GameState) -> Dict[str, Any]:
         "pending_check": None,
     }
 
+    # ── Final round cleanup: ceremony delivered, clear flags ──
+    if state.get("_is_final_round"):
+        updates["_is_final_round"] = False
+        updates["_final_narration_delivered"] = True
+        print(f"[dm_response_node] 🎭 结局仪式叙述已生成 ({len(narration)} chars)")
+
     # Advance round if a full turn is complete
     updates["current_round"] = state.get("current_round", 0) + 1
 
@@ -120,6 +126,7 @@ def _build_system_prompt(state: GameState) -> str:
     """Build the system prompt for the DM AI."""
     script_title = state.get("script_title", "未知剧本")
     scene = state.get("scene_description", "")
+    is_final = state.get("_is_final_round", False)
 
     rules = """
 你是一个专业的跑团游戏主持人（DM）。你的职责：
@@ -131,14 +138,28 @@ def _build_system_prompt(state: GameState) -> str:
 5. 回应时使用生动的中文描述
 6. ⚠️ 当剧情推进到新的情节节点时，必须在 ##ACTIONS## 中声明 update_node
 7. 检定时务必使用上下文中给定的检定属性名和难度值，不要自己编造
-8. 检定成功后按上下文中给定的"成功→"效果推进；失败后按"失败→"效果推进
+8. 检定成功后按上下文中给定的"成功→"效果推进；失败后按"失败→"效果推进"""
+
+    # Append final-round ceremony rules if applicable
+    if is_final:
+        rules += """
+
+🎭 **结局仪式感专有规则：**
+9. 这是故事的最后一次叙述，不需要再触发检定或推进节点
+10. 用诗意的语言收束全篇：回顾角色成长、升华主题、描绘最终画面
+11. 让每个玩家的选择都有回声，情感既要释放也要留有余韵
+12. 像一部电影或小说的结尾一样，给玩家一个值得回味的告别"""
+    else:
+        rules += """
 
 ⚙️ 检定机制说明（你只需要触发检定，系统会自动执行掷骰）：
   - 系统从 0 ~ 检定属性值 之间随机取一个整数
   - 若该随机数 >= 难度，则成功；否则失败
   - 例：力量=14、难度=10 → 系统取 randint(0,14)，若结果≥10 则成功（概率约 36%）
   - 例：洞察值=3、难度=3  → 系统取 randint(0,3)，若结果≥3 则成功（概率 25%）
-  - 因此：难度越接近属性值上限，成功率越低；难度超过属性值则不可能成功
+  - 因此：难度越接近属性值上限，成功率越低；难度超过属性值则不可能成功"""
+
+    rules += """
 
 输出格式：
 ##NARRATION##
@@ -154,13 +175,20 @@ def _build_system_prompt(state: GameState) -> str:
 ⚠️ 重要规则：
 - 如果当前回合的剧情已经推进到了一个新的情节节点，务必在 ##ACTIONS## 中加入 update_node 声明
 - 如果你认为剧情仍在当前节点内（刚进入、正在展开），可以不加 update_node
-- nodeId 必须直接复制"🔜 可推进到的节点"列表中某个节点的完整名称，
-  例如下一条是 "节点3｜这大叔好像我爸年轻版"，则 nodeId 填写 "节点3｜这大叔好像我爸年轻版"
-  （直接从上文复制粘贴，一字不差，不要自己编造）
+- nodeId 必须直接复制"🔜 可推进到的节点"列表中某个节点的名称（仅复制节点名称本身即可），
+  例如下一条节点名称是 "节点3"，则 nodeId 填写 "节点3"
+  （直接从上文复制粘贴，不要自己编造或添加额外描述）
 - 每次最多推进一个节点
 - ⚠️ 选项标注规则：如果某个选项在你计划中会触发检定（roll_dice），请在该选项末尾标注「（需检定）」，
-  例如：\"- 用力推开石门「（需检定）」\"。纯对话或观察类选项则不需标注。
-"""
+  例如：\"- 用力推开石门「（需检定）」\"。纯对话或观察类选项则不需标注。"""
+
+    if is_final:
+        rules += """
+
+⚠️ **结局对话特殊规则：**
+- 这是故事的终点，##ACTIONS## 应该为空数组 []，不要再触发检定或推进节点
+- ##OPTIONS## 如果不是必需的，可以留空 []
+- 集中于给出一次完整、饱满的最终叙述"""
 
     plot_notes = ""
     inspection = state.get("plot_inspection", {})
@@ -227,13 +255,23 @@ def _parse_dm_response(raw: str) -> dict:
 
 
 def _strip_section_headers(text: str) -> str:
-    """Remove any remaining ##SECTION## headers and content blocks from text."""
-    return re.sub(
-        r'##(?:ACTIONS|OPTIONS|PRIVATE)##\s*[\s\S]*?(?=##|$)',
+    """Remove any remaining ##SECTION## headers and content blocks from text.
+    Handles all known section types, including NARRATION and EPILOGUE."""
+    # First remove section markers themselves (keep content between them as narration)
+    cleaned = re.sub(
+        r'##(?:ACTIONS|OPTIONS|PRIVATE|NARRATION|EPILOGUE)##',
         '',
         text,
         flags=re.IGNORECASE,
-    ).strip()
+    )
+    # Then remove section content blocks that follow headers
+    cleaned = re.sub(
+        r'##(?:ACTIONS|OPTIONS|PRIVATE|EPILOGUE)##\s*[\s\S]*?(?=##|$)',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
 
 
 def _clean_option(opt_text: str) -> str:

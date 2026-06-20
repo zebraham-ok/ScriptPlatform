@@ -73,6 +73,9 @@ def build_mock_state(mode="script") -> dict:
         "vote_results": {},
         "ending_reached": False,
         "ending_data": None,
+        "_end_node_reached": False,
+        "_is_final_round": False,
+        "_final_narration_delivered": False,
     }
     return state
 

@@ -3,7 +3,8 @@ import { Button } from 'antd';
 
 export interface CustomAttributeDef {
   name: string;
-  defaultValue: number;
+  type?: 'number' | 'text';
+  defaultValue: number | string;
   min?: number;
   max?: number;
 }
@@ -19,7 +20,7 @@ interface CharacterSheetEditorProps {
   characterName: string;
   attributes: CustomAttributeDef[];
   constraints?: AttributeConstraint | null;
-  onSubmit: (attributes: Record<string, number>) => void;
+  onSubmit: (attributes: Record<string, number | string>) => void;
   onCancel?: () => void;
   loading?: boolean;
 }
@@ -32,15 +33,23 @@ const CharacterSheetEditor: React.FC<CharacterSheetEditorProps> = ({
   onCancel,
   loading = false,
 }) => {
-  const [values, setValues] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
+  const [values, setValues] = useState<Record<string, number | string>>(() => {
+    const init: Record<string, number | string> = {};
     attributes.forEach((a) => {
-      init[a.name] = a.defaultValue;
+      if (a.type === 'text') {
+        init[a.name] = typeof a.defaultValue === 'string' ? a.defaultValue : '';
+      } else {
+        init[a.name] = typeof a.defaultValue === 'number' ? a.defaultValue : 5;
+      }
     });
     return init;
   });
 
-  const totalSum = useMemo(() => Object.values(values).reduce((s, v) => s + v, 0), [values]);
+  const totalSum = useMemo(() => {
+    return Object.entries(values).reduce((s, [_, v]) => {
+      return typeof v === 'number' ? s + v : s;
+    }, 0);
+  }, [values]);
 
   // Determine min/max for each attribute
   const attrRange = useMemo(() => {
@@ -68,10 +77,14 @@ const CharacterSheetEditor: React.FC<CharacterSheetEditorProps> = ({
 
   const isValid = errors.length === 0;
 
-  const handleChange = (name: string, value: number) => {
+  const handleChange = (name: string, value: number | string) => {
     const range = attrRange[name];
-    const clamped = Math.min(Math.max(value, range.min), range.max);
-    setValues((prev) => ({ ...prev, [name]: clamped }));
+    if (typeof value === 'string') {
+      setValues((prev) => ({ ...prev, [name]: value }));
+    } else {
+      const clamped = Math.min(Math.max(value, range.min), range.max);
+      setValues((prev) => ({ ...prev, [name]: clamped }));
+    }
   };
 
   const handleSubmit = () => {
@@ -93,6 +106,25 @@ const CharacterSheetEditor: React.FC<CharacterSheetEditorProps> = ({
 
       <div className="space-y-3 mb-4">
         {attributes.map((attr) => {
+          if (attr.type === 'text') {
+            // Text field: render as text input
+            const currentVal = typeof values[attr.name] === 'string' ? values[attr.name] as string : '';
+            return (
+              <div key={attr.name} className="flex items-center gap-3">
+                <label className="text-sm text-slate-400 w-16 shrink-0">{attr.name}</label>
+                <input
+                  type="text"
+                  value={currentVal}
+                  onChange={(e) => handleChange(attr.name, e.target.value)}
+                  placeholder={`输入${attr.name}`}
+                  className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-1.5
+                    text-sm text-white placeholder-slate-500
+                    focus:outline-none focus:border-amber-500/60 transition-colors"
+                />
+              </div>
+            );
+          }
+          // Number field: render as slider
           const range = attrRange[attr.name];
           return (
             <div key={attr.name} className="flex items-center gap-3">

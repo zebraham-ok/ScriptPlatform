@@ -90,9 +90,15 @@ const GamePage: React.FC = () => {
     if (role) {
       const init: Record<string, string> = {};
       (role.customizableAttributes || []).forEach((f) => {
-        // Default from existing attributes
-        const val = role.attributes?.[f.displayName] ?? 5;
-        init[f.path] = String(val);
+        if (f.type === 'text') {
+          // Text field: use existing attribute value or empty string
+          const val = role.attributes?.[f.displayName];
+          init[f.path] = typeof val === 'string' ? val : '';
+        } else {
+          // Number field: default to existing value or 5
+          const val = role.attributes?.[f.displayName] ?? 5;
+          init[f.path] = String(val);
+        }
       });
       setCustomAttrs(init);
     }
@@ -127,10 +133,10 @@ const GamePage: React.FC = () => {
     const selectedRole = roles.find((r) => r.id === myAssignedRoleId);
     const hasCustomFields = (selectedRole?.customizableAttributes?.length ?? 0) > 0;
 
-    // Calculate total of numeric custom attributes for validation
+    // Calculate total of numeric custom attributes for validation (exclude text fields)
     const cap = selectedRole?.numericAttributeCap ?? null;
     const numericFields = (selectedRole?.customizableAttributes || []).filter(
-      (f) => f.type === 'number' || f.type === undefined
+      (f) => f.type !== 'text'
     );
     const totalAttrSum = numericFields.reduce(
       (sum, f) => sum + parseInt(customAttrs[f.path] || '5', 10),
@@ -223,7 +229,29 @@ const GamePage: React.FC = () => {
                 </div>
               )}
               <div className="space-y-3">
-                {(selectedRole.customizableAttributes || []).map((field) => {
+                {(selectedRole.customizableAttributes || []).map((field: any) => {
+                  if (field.type === 'text') {
+                    // Text field: render as text input
+                    return (
+                      <div key={field.path} className="flex items-center gap-3">
+                        <label className="text-sm text-slate-300 w-20 flex-shrink-0">
+                          {field.displayName}
+                        </label>
+                        <input
+                          type="text"
+                          value={customAttrs[field.path] || ''}
+                          onChange={(e) =>
+                            setCustomAttrs((p) => ({ ...p, [field.path]: e.target.value }))
+                          }
+                          placeholder={`输入${field.displayName}`}
+                          className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-1.5
+                            text-sm text-white placeholder-slate-500
+                            focus:outline-none focus:border-amber-500/60 transition-colors"
+                        />
+                      </div>
+                    );
+                  }
+                  // Number field: render as slider
                   const fieldCap = cap || 99;
                   const currentVal = parseInt(customAttrs[field.path] || '5', 10);
                   return (

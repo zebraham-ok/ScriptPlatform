@@ -44,6 +44,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     world_setting = state.get("world_setting", [])
     characters_data = state.get("characters_data", [])
     locations_data = state.get("locations_data", [])
+    items_data = state.get("items_data", [])
     plot_inspection = state.get("plot_inspection", {})
     plot_graph = state.get("plot_graph", {})
     current_node_id = state.get("current_node", "")
@@ -97,6 +98,14 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         if dm_notes:
             plot_context += f"DM备注：{dm_notes[:200]}\n"
 
+    # ── Extract initial checkpoint node rich data ──
+    initial_node_context = _build_initial_node_context(
+        current_node_id, plot_graph, locations_data, characters_data, items_data
+    )
+
+    # ── Build story overview (full plot tree) for DM context ──
+    story_overview = _build_story_overview(plot_graph, plot_inspection)
+
     fallback_text = _build_fallback_opening(
         script_title, world_summary, display_scene_name, raw_scene_desc
     )
@@ -114,6 +123,8 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
                 plot_context=plot_context,
                 scene_name=display_scene_name,
                 raw_scene_desc=raw_scene_desc,
+                initial_node_context=initial_node_context,
+                story_overview=story_overview,
             ),
             timeout=3.0,  # Don't block stage transition for more than 3s
         )
@@ -140,6 +151,8 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         "plot_context": plot_context,
         "scene_name": display_scene_name,
         "raw_scene_desc": raw_scene_desc,
+        "initial_node_context": initial_node_context,
+        "story_overview": story_overview,
     } if opening_pending else None
     updates["_scene_image_prompt"] = _build_image_prompt(
         display_scene_name, raw_scene_desc, script_title, plot_graph,
@@ -426,6 +439,174 @@ def _build_image_prompt(
     return "，".join(parts)
 
 
+def _build_initial_node_context(
+    current_node_id: str,
+    plot_graph: dict,
+    locations_data: list,
+    characters_data: list,
+    items_data: list,
+) -> str:
+    """Build context from the initial checkpoint node's rich data.
+
+    Extracts: sceneDescription, conditions (player choices),
+    boundLocations (resolved to names), triggerConditions (resolved to entity names),
+    potentialActions, and DM notes (description field).
+    """
+    if not current_node_id:
+        return ""
+
+    # Build entity name resolvers
+    entity_names = {}
+    for c in characters_data:
+        if isinstance(c, dict):
+            eid = c.get("id", "")
+            name = c.get("name", c.get("label", eid))
+            entity_names[f"character:{eid}"] = f"角色「{name}」"
+            entity_names[eid] = f"角色「{name}」"
+    for loc in locations_data:
+        if isinstance(loc, dict):
+            eid = loc.get("id", "")
+            name = loc.get("name", loc.get("label", eid))
+            entity_names[f"location:{eid}"] = f"地点「{name}」"
+            entity_names[eid] = f"地点「{name}」"
+    for it in items_data:
+        if isinstance(it, dict):
+            eid = it.get("id", "")
+            name = it.get("name", it.get("label", eid))
+            entity_names[f"item:{eid}"] = f"物品「{name}」"
+            entity_names[eid] = f"物品「{name}」"
+
+    # Find the current node's data
+    node_data = {}
+    for n in plot_graph.get("nodes", []):
+        if isinstance(n, dict) and n.get("id") == current_node_id:
+            node_data = n.get("data", {}) if isinstance(n.get("data"), dict) else {}
+            break
+
+    if not node_data:
+        return ""
+
+    lines = []
+
+    # 1. Scene description (visible to players)
+    scene_desc = node_data.get("sceneDescription", "")
+    if scene_desc:
+        lines.append(f"**当前场景描述（告知玩家）**：{scene_desc}")
+
+    # 2. DM note (hidden from players, the description field of the node)
+    dm_note = node_data.get("description", "")
+    if dm_note:
+        lines.append(f"**DM备注（不告知玩家）**：{dm_note[:300]}")
+
+    # 3. Conditions (player choices available at this node)
+    conditions = node_data.get("conditions", [])
+    if conditions and isinstance(conditions, list) and len(conditions) > 0:
+        cond_str = "、".join(str(c) for c in conditions)
+        lines.append(f"**当前节点玩家可选行动**：{cond_str}")
+
+    # 4. Potential actions (structured action → result mapping)
+    potential_actions = node_data.get("potentialActions", {})
+    if potential_actions and isinstance(potential_actions, dict):
+        action_lines = []
+        for action, result in potential_actions.items():
+            action_lines.append(f"  · {action.strip()} → {str(result)[:80]}")
+        if action_lines:
+            lines.append("**节点预置行动映射**：\n" + "\n".join(action_lines))
+
+    # 5. Bound locations
+    bound_locs = node_data.get("boundLocations", [])
+    if bound_locs:
+        loc_names = []
+        for lid in bound_locs:
+            name = entity_names.get(lid) or entity_names.get(f"location:{lid}") or lid
+            loc_names.append(name)
+        lines.append(f"**绑定地点**：{'、'.join(loc_names)}")
+
+    # 6. Trigger conditions (resolved to entity names)
+    trigger_conds = node_data.get("triggerConditions", [])
+    if trigger_conds:
+        resolved = [entity_names.get(tc, tc) for tc in trigger_conds]
+        lines.append(f"**触发条件**：{'、'.join(resolved)}")
+
+    # 7. Bound checks (mechanics)
+    bound_checks = node_data.get("boundChecks", [])
+    if bound_checks:
+        lines.append(f"**绑定检定**：{', '.join(str(c) for c in bound_checks)}")
+
+    return "\n".join(lines)
+
+
+def _build_story_overview(plot_graph: dict, plot_inspection: dict) -> str:
+    """Build a summary of the entire plot tree for DM context.
+
+    Shows all nodes, their labels/descriptions, and how they connect,
+    giving the DM a high-level map of the story structure.
+    """
+    nodes = plot_graph.get("nodes", []) if isinstance(plot_graph, dict) else []
+    node_names = plot_inspection.get("node_names", {}) if isinstance(plot_inspection, dict) else {}
+    connections = plot_inspection.get("connections", {}) if isinstance(plot_inspection, dict) else {}
+    initial = plot_inspection.get("initial_checkpoint", "") if isinstance(plot_inspection, dict) else ""
+    endings = plot_inspection.get("end_checkpoints", []) if isinstance(plot_inspection, dict) else []
+
+    if not nodes:
+        return ""
+
+    # Build node data index
+    nodes_index = {}
+    for n in nodes:
+        if isinstance(n, dict):
+            nid = n.get("id", "")
+            nd = n.get("data", {}) if isinstance(n.get("data"), dict) else {}
+            nodes_index[nid] = {
+                "label": n.get("label", nid),
+                "name": nd.get("name", ""),
+                "scene_desc": nd.get("sceneDescription", "")[:80],
+                "dm_note": nd.get("description", "")[:60],
+            }
+
+    lines = ["## 剧情树总览", ""]
+    lines.append(f"起始节点：{node_names.get(initial, initial) or '（未设置）'}")
+    lines.append(f"结局节点数：{len(endings)}")
+    lines.append(f"总节点数：{len(nodes)}")
+    lines.append("")
+
+    # Build a simple adjacency representation
+    for nid, info in sorted(nodes_index.items(), key=lambda x: (x[0] == initial, x[0])):
+        label = info["label"]
+        is_initial = "🚩 " if nid == initial else ""
+        is_ending = "🏁 " if nid in endings else ""
+        prefix = is_initial + is_ending
+
+        # Brief description
+        desc_parts = []
+        if info["scene_desc"]:
+            desc_parts.append(f"场景：{info['scene_desc']}")
+        if info["dm_note"]:
+            desc_parts.append(f"DM备注：{info['dm_note']}")
+
+        # Outgoing edges
+        out_edges = connections.get(nid, [])
+        next_labels = []
+        for e in out_edges:
+            tgt = e.get("target", "") if isinstance(e, dict) else e
+            tgt_label = nodes_index.get(tgt, {}).get("label", tgt) if tgt else "?"
+            edge_label = e.get("label", "") if isinstance(e, dict) else ""
+            if edge_label:
+                next_labels.append(f"[{edge_label}]→{tgt_label}")
+            else:
+                next_labels.append(f"→{tgt_label}")
+
+        line = f"{prefix}{label}"
+        if desc_parts:
+            line += f"  （{'；'.join(desc_parts)}）"
+        if next_labels:
+            line += f"\n    出边：{'  '.join(next_labels)}"
+
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
 def _build_fallback_opening(
     script_title: str,
     world_text: str,
@@ -459,19 +640,43 @@ async def _generate_ai_opening(
     plot_context: str,
     scene_name: str,
     raw_scene_desc: str,
+    initial_node_context: str = "",
+    story_overview: str = "",
 ) -> str:
     """Use AI to generate a rich DM opening narration."""
     # Build character context for AI background knowledge (not for listing)
     char_context = f"\n\n**场上人物（仅供背景参考，不要在开场白中列出可选角色）**：\n{char_summary}" if char_summary else ""
 
+    # Build story overview section
+    overview_section = ""
+    if story_overview:
+        overview_section = f"""
+---
+
+**📖 剧情树总览（DM参考）**：
+{story_overview}
+"""
+
+    # Build initial node context section
+    node_section = ""
+    if initial_node_context:
+        node_section = f"""
+---
+
+**📍 起始节点详细信息**：
+{initial_node_context}
+"""
+
     prompt = f"""你是一个专业的跑团/剧本杀 DM（主持人）。请为以下剧本写一个开场白，要求：
 
 1. 用生动、沉浸式的语言营造氛围
 2. 简要引入世界观
-3. 描述当前场景，自然地融入在场人物的描写（作为场景的一部分，而非列出可选角色）
-4. 给予玩家自然的行动引导
-5. 长度控制在 300 字以内
-6. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
+3. 根据"起始节点详细信息"中的场景描述和玩家可选行动，自然地引导玩家进入剧情
+4. 如果节点有DM备注（不告知玩家的信息），请将这些隐藏信息融入叙述中以营造悬念或伏笔，但不要直接透露
+5. 描述当前场景，自然地融入在场人物的描写（作为场景的一部分，而非列出可选角色）
+6. 给予玩家自然的行动引导（参考节点中的玩家可选行动方向，但不要以列表形式呈现）
+7. 长度控制在 300 字以内
+8. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
 
 ---
 
@@ -490,6 +695,7 @@ async def _generate_ai_opening(
 
 **剧情上下文**：
 {plot_context or "（自由探索）"}
+{node_section}{overview_section}
 
 ---
 

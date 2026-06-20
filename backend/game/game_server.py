@@ -101,6 +101,8 @@ def _build_initial_state(room: dict) -> dict:
         "ending_reached": False,
         "ending_data": None,
         "_end_node_reached": False,
+        "_is_final_round": False,
+        "_final_narration_delivered": False,
         "end_checkpoints": [],
         "_need_dm_narration": False,
         "_route": "wait",
@@ -1022,8 +1024,10 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
     # Ending
     ending_data = new_state.get("ending_data")
     if ending_data or new_state.get("ending_reached"):
+        ending_label = ending_data.get("endingLabel", "故事结局") if ending_data else "故事结局"
         await sio.emit("ending_card", {
-            "data": ending_data or {"narration": "故事结束了..."},
+            "title": ending_data.get("title", "游戏结束") if ending_data else "游戏结束",
+            "endingLabel": ending_label,
             "timestamp": datetime.now().isoformat(),
         }, room=room_id)
         room["stage"] = "ENDING"

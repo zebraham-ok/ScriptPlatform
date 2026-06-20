@@ -52,6 +52,7 @@ interface GameStore {
 
   // ---- Ending ----
   ending: EndingData | null;
+  dismissEnding: () => void;
 
   // ---- UI ----
   loading: boolean;
@@ -307,6 +308,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   _addDiceResult: (result) => set((s) => ({ diceResults: [...s.diceResults, result], showDice: true })),
   _setPendingVote: (vote: PendingVote | null) => set({ pendingVote: vote }),
   _setEnding: (ending) => set({ ending }),
+  dismissEnding: () => set({ ending: null }),
   _setLoading: (loading) => set({ loading }),
   _setError: (error) => set({ error }),
 
@@ -651,9 +653,7 @@ function _bindSocketEvents(
         ...s,
         ending: {
           title: data.title || '游戏结束',
-          description: data.description || '',
-          epilogue: data.epilogue || '',
-          characterFates: data.characterFates || [],
+          endingLabel: data.endingLabel || '故事结局',
         },
         stage: 'ENDING',
       }));

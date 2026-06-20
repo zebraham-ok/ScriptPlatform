@@ -61,10 +61,14 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
             updates["ending_reached"] = True
             updates["_route"] = "ending"
             return updates
-        else:
-            # First time hitting end checkpoint: allow one more DM response cycle
+        elif not state.get("_is_final_round") and not state.get("_final_narration_delivered"):
+            # First time hitting end checkpoint: route to DM for elevated ceremony narration
             updates["_end_node_reached"] = True
-            print(f"[playing_node] ⚠️ 结局节点 [{cn_name}] 已到达，下一轮对话后结束游戏")
+            updates["_is_final_round"] = True  # Signal AI to deliver an elevated ending
+            updates["_route"] = "dm_turn"
+            print(f"[playing_node] 🎭 结局节点 [{cn_name}] 已到达，路由到 DM 生成最终仪式叙述")
+            return updates
+        # else: _is_final_round was set, _final_narration_delivered already done, let it fall through to ending check
 
     # Check ending data from DM
     if state.get("ending_data"):
@@ -97,13 +101,29 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
                 plot_graph = state.get("plot_graph", {"nodes": [], "edges": []})
                 current_node = state.get("current_node", "")
 
-                # ⚠️ 容错：DM 可能返回 label 而非 UUID，统一解析
+                # ⚠️ 容错：DM 可能返回 label（含｜分隔符）而非 UUID，统一解析
+                if target_node_id not in node_names and target_node_id not in label_to_id:
+                    # 尝试用 ｜ 切割（AI 有时会在 nodeId 后拼接场景描述）
+                    if '｜' in target_node_id:
+                        prefix = target_node_id.split('｜')[0].strip()
+                        if prefix in label_to_id:
+                            resolved = label_to_id[prefix]
+                            print(f"  🔧 pipe-label→UUID: [{target_node_id}] → [{resolved}]")
+                            target_node_id = resolved
                 if target_node_id not in node_names and target_node_id in label_to_id:
                     resolved = label_to_id[target_node_id]
                     print(f"  🔧 label→UUID: [{target_node_id}] → [{resolved}]")
                     target_node_id = resolved
                 if current_node and current_node not in node_names and current_node in label_to_id:
                     current_node = label_to_id[current_node]
+                # 如果 current_node 也含 ｜，尝试解析
+                if current_node and current_node not in node_names and current_node not in label_to_id:
+                    if '｜' in current_node:
+                        prefix = current_node.split('｜')[0].strip()
+                        if prefix in label_to_id:
+                            resolved = label_to_id[prefix]
+                            print(f"  🔧 pipe-label current_node: [{current_node}] → [{resolved}]")
+                            current_node = resolved
 
                 _node_switch_attempted = True
                 _node_switch_target = node_names.get(target_node_id, target_node_id)
