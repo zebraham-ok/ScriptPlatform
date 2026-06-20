@@ -102,8 +102,11 @@ async def dm_response_node(state: GameState) -> Dict[str, Any]:
         "private_messages": parsed.get("private_messages", {}),
         "chat_history": chat,
         "_route": "done",
+        # ⚠️ Do NOT clear dice_result here! The second dm_response call (post-check)
+        #    would overwrite the dice_result set by check_node, preventing
+        #    _process_graph_results from entering the check-specific emission flow.
+        #    dice_result is consumed & cleared in _process_graph_results instead.
         # Clear previous round's consumable state to prevent stale replays
-        "dice_result": None,
         "pending_check": None,
     }
 
@@ -165,15 +168,23 @@ def _build_system_prompt(state: GameState) -> str:
 ##NARRATION##
 （你的叙述内容）
 ##ACTIONS##
-[{"type": "update_node", "params": {"nodeId": "目标节点名称"}}, {"type": "roll_dice", "params": {"checkTarget": "属性名", "difficulty": 10, "description": "检定描述"}}]
+[{"type": "update_node", "params": {"nodeId": "目标节点名称"}}, {"type": "change_scene", "params": {"name": "新场景名", "description": "场景描述"}}, {"type": "roll_dice", "params": {"checkTarget": "属性名", "difficulty": 10, "description": "检定描述"}}]
 ##OPTIONS##
 - 选项1
 - 选项2
 ##PRIVATE##
 {"角色ID": "私密消息内容"}
 
+⚠️ 检定后解读规则（当对话记录中出现 🎲 检定结果时）：
+9. ⛔ 此时系统已完成掷骰，你的任务是解读结果，绝对不能再在 ##ACTIONS## 中加入 roll_dice！
+10. 🎯 集中叙述检定成功或失败带来的具体后果。不要重复描述之前已经叙述过的场景、人物或环境——玩家刚看过那些内容。
+11. 📋 可以在 ##OPTIONS## 中列出玩家接下来的可选项，引导下一步行动。
+12. 🔄 如果需要推进剧情节点，仍可加入 update_node 或 change_scene。
+
 ⚠️ 重要规则：
 - 如果当前回合的剧情已经推进到了一个新的情节节点，务必在 ##ACTIONS## 中加入 update_node 声明
+- 如果玩家行动导致地点/场景发生了变化（进入新房间、前往新区域等），但情节节点未变，请使用 change_scene 声明新场景
+  change_scene 的 name 使用简洁的场景名（如"废弃医院大厅"），description 提供详细的场景氛围描述（50-200字）
 - 如果你认为剧情仍在当前节点内（刚进入、正在展开），可以不加 update_node
 - nodeId 必须直接复制"🔜 可推进到的节点"列表中某个节点的名称（仅复制节点名称本身即可），
   例如下一条节点名称是 "节点3"，则 nodeId 填写 "节点3"

@@ -892,6 +892,12 @@ async def send_message(sid: str, data: dict):
     # Use DM route
     room["state"]["_route"] = "dm_turn"
 
+    # ⚠️ Save pre-graph state snapshot BEFORE _invoke_graph overwrites room["state"]
+    prev_state = room["state"]
+    room["_prev_node"] = prev_state.get("current_node", "")
+    room["_prev_scene"] = prev_state.get("scene", "")
+    room["_prev_scene_desc"] = prev_state.get("scene_description", "")
+
     # Invoke graph — tell frontend DM is thinking
     await sio.emit("dm_status", {"thinking": True, "status": "主持人正在翻剧本..."}, room=room_id)
 
@@ -920,8 +926,10 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
         await _emit_stage_change(room_id, room["stage"], stage)
         room["stage"] = stage
 
-    # Node change detection
-    prev_node = room["state"].get("current_node", "")
+    # Node change detection — update scene immediately, then async image
+    # ⚠️ Use saved pre-graph snapshot (room["_prev_node"]) because
+    #    _invoke_graph already overwrote room["state"] with the graph result.
+    prev_node = room.pop("_prev_node", room["state"].get("current_node", ""))
     new_node = new_state.get("current_node", "")
     node_changed = False
     new_node_name = ""
@@ -937,7 +945,7 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
         print(f"[GameServer] 🌿 节点变更已确认: {old_name} → {new_node_name}  "
               f"(路径: {' → '.join(nh_names)})")
 
-        # Extract scene description from the new node's data for image generation
+        # Extract scene description from the new node's data
         plot_graph = new_state.get("plot_graph", {})
         for n in plot_graph.get("nodes", []):
             if isinstance(n, dict) and n.get("id") == new_node:
@@ -945,6 +953,33 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
                 new_node_scene_desc = nd.get("sceneDescription", "")
                 break
 
+        # ---- Scene auto-switch: emit scene_update IMMEDIATELY (synchronous with DM narration) ----
+        # This follows BUMENGweb-main pattern: scene text arrives first, image loads async later
+        #
+        # When DM's change_scene happens alongside update_node, prefer the explicit scene name
+        # over the plot-node name (e.g. "幽藤村边缘·哨兵指引之路" vs "节点4-幽藤树下的秘密")
+        state_scene_name = new_state.get("scene", "")
+        if state_scene_name and state_scene_name != new_node_name:
+            scene_name = state_scene_name
+        else:
+            scene_name = new_node_name
+
+        scene_desc = new_node_scene_desc or new_state.get("scene_description", "")
+        if not scene_desc:
+            # Fallback: derive from node label
+            for n in plot_graph.get("nodes", []):
+                if isinstance(n, dict) and n.get("id") == new_node:
+                    nd = n.get("data", {}) if isinstance(n.get("data"), dict) else {}
+                    scene_desc = nd.get("description", "") or nd.get("label", "")
+                    break
+
+        # Update room state scene fields so future DM responses reference the new scene
+        room_state = room.get("state", {})
+        room_state["scene"] = scene_name
+        room_state["scene_description"] = scene_desc
+        room["state"] = room_state
+
+        # Emit both node_changed and scene_update to frontend
         await sio.emit("node_changed", {
             "previousNodeId": prev_node,
             "previousNodeName": old_name,
@@ -954,37 +989,90 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
             "timestamp": datetime.now().isoformat(),
         }, room=room_id)
 
-        # Spawn async scene image generation for the new node
-        if new_node_scene_desc:
+        await sio.emit("scene_update", {
+            "scene": scene_name,
+            "description": scene_desc,
+            "image": new_state.get("scene_image"),  # may be None
+            "characters": new_state.get("characters", []),
+        }, room=room_id)
+
+        # Spawn async scene image generation for the new node (fire-and-forget)
+        if scene_desc:
             script_title = room.get("scriptTitle", "")
-            room_state = room.get("state", {})
             asyncio.create_task(_generate_scene_image_for_node(
-                room_id, new_node_name, new_node_scene_desc, script_title,
+                room_id, scene_name, scene_desc, script_title,
                 characters_data=room_state.get("characters_data", [])
             ))
 
-    # Dice result — emit BEFORE DM response so frontend enters "processing check" state first
+    # ── Check flow: short check announcement → dice_roll → post-check DM ──
     dice_result = new_state.get("dice_result")
+    dm_resp = new_state.get("dm_response", "")
+    dm_options = new_state.get("dm_options", [])
+
     if dice_result:
+        # ── ① Short DM check announcement (synthesised, not AI scene narration) ──
+        check_target = dice_result.get("checkTarget", "?")
+        check_desc = dice_result.get("description", "")
+        check_diff = dice_result.get("difficulty", 0)
+        announce = (
+            f"🎲 DM 进行检定：{check_desc}"
+            if check_desc else
+            f"🎲 DM 进行检定：{check_target} 难度 {check_diff}"
+        )
+        print(f"[GameServer] 📢 发送检定声明: {announce[:80]}...")
+        await sio.emit("chat_message", {
+            "role": "dm",
+            "sender": "DM",
+            "content": announce,
+            "isCheckAnnouncement": True,
+            "timestamp": datetime.now().isoformat(),
+        }, room=room_id)
+
+        # ── ② Dice roll animation (frontend DiceAnimation) ──
         await sio.emit("dice_roll", {
             "result": dice_result,
             "timestamp": datetime.now().isoformat(),
         }, room=room_id)
+
+        # ── ③ Check result as inline system message ──
+        chat_history = new_state.get("chat_history", [])
+        for i in range(len(chat_history) - 1, -1, -1):
+            m = chat_history[i]
+            if isinstance(m, dict) and m.get("role") == "system" and "🎲" in m.get("content", ""):
+                await sio.emit("chat_message", {
+                    "role": "system",
+                    "sender": "系统",
+                    "content": m.get("content", ""),
+                    "timestamp": datetime.now().isoformat(),
+                }, room=room_id)
+                break
+
         room["state"]["dice_result"] = None  # consumed
 
-    # DM response + options (options hidden by frontend until dmThinking clears)
-    dm_resp = new_state.get("dm_response", "")
-    dm_options = new_state.get("dm_options", [])
-    if dm_resp:
-        print(f"[GameServer] _process_graph_results: emitting dm_response "
-              f"({len(dm_resp)} chars, options={len(dm_options)}): {dm_resp[:120]}...")
-        await sio.emit("chat_message", {
-            "role": "dm",
-            "sender": "DM",
-            "content": dm_resp,
-            "options": dm_options if dm_options else None,
-            "timestamp": datetime.now().isoformat(),
-        }, room=room_id)
+        # ── ④ Post-check DM interpretation (consequences + new options) ──
+        if dm_resp:
+            print(f"[GameServer] 📢 发送检定后DM叙述 + 选项: "
+                  f"({len(dm_resp)} chars, options={len(dm_options)}): {dm_resp[:120]}...")
+            await sio.emit("chat_message", {
+                "role": "dm",
+                "sender": "DM",
+                "content": dm_resp,
+                "options": dm_options if dm_options else None,
+                "isPostCheck": True,
+                "timestamp": datetime.now().isoformat(),
+            }, room=room_id)
+    else:
+        # No check — normal DM narration (current behavior)
+        if dm_resp:
+            print(f"[GameServer] _process_graph_results: emitting dm_response "
+                  f"({len(dm_resp)} chars, options={len(dm_options)}): {dm_resp[:120]}...")
+            await sio.emit("chat_message", {
+                "role": "dm",
+                "sender": "DM",
+                "content": dm_resp,
+                "options": dm_options if dm_options else None,
+                "timestamp": datetime.now().isoformat(),
+            }, room=room_id)
 
     # Private messages
     private_msgs = new_state.get("private_messages", {})
@@ -994,15 +1082,39 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
             "timestamp": datetime.now().isoformat(),
         }, to=target_sid)
 
-    # Scene update
+    # Scene update — triggered by DM's change_scene action or state change (non-node)
+    # ⚠️ Use saved snapshot (room["_prev_scene"]) for comparison, same reason as above.
+    prev_scene_name = room.pop("_prev_scene", room["state"].get("scene", ""))
+    prev_scene_desc = room.pop("_prev_scene_desc", room["state"].get("scene_description", ""))
+    new_scene_name = new_state.get("scene", "")
     scene_desc = new_state.get("scene_description", "")
     scene_image = new_state.get("scene_image")
-    if scene_desc or scene_image:
+    scene_changed = (
+        (new_scene_name and new_scene_name != prev_scene_name) or
+        (scene_desc and scene_desc != prev_scene_desc) or
+        bool(scene_image)
+    )
+    if scene_changed and not node_changed:  # node_changed already emitted scene_update above
+        print(f"[GameServer] 🏞️  DM触发了场景切换 (非节点变更): "
+              f"\"{prev_scene_name}\" → \"{new_scene_name}\"")
         await sio.emit("scene_update", {
-            "scene": new_state.get("scene", ""),
+            "scene": new_scene_name,
             "description": scene_desc,
             "image": scene_image,
+            "characters": new_state.get("characters", []),
         }, room=room_id)
+        # Update room state scene
+        room["state"]["scene"] = new_scene_name
+        room["state"]["scene_description"] = scene_desc
+
+        # Spawn async scene image generation for the new scene
+        if new_scene_name and new_scene_name not in ("大厅", "Lobby", "等待大厅", "灵感征集大厅"):
+            script_title = room.get("scriptTitle", "")
+            room_state = room.get("state", {})
+            asyncio.create_task(_generate_scene_image_for_node(
+                room_id, new_scene_name, scene_desc, script_title,
+                characters_data=room_state.get("characters_data", [])
+            ))
 
     # Character state updates
     char_attrs = new_state.get("character_attributes", {})
@@ -1215,7 +1327,10 @@ async def _generate_scene_image_for_node(
         if char_visuals:
             prompt += f" 场景中出现角色：" + "；".join(char_visuals[:3]) + "。"
 
-        prompt += " 风格为角色扮演游戏，写实风格，电影感，细节丰富，4K画质。"
+        prompt += (
+            " 风格为角色扮演游戏，半写实风格，电影感，细节丰富，4K画质。"
+            "明亮的自然光照，高可见度，清晰锐利的环境细节，适中的对比度与饱和度。"
+        )
 
         print(f"🎨 [Scene] 开始生成场景图片: scene={scene_name}, desc={desc_text[:80]}...")
 

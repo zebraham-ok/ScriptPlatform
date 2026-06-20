@@ -24,9 +24,14 @@ async def check_node(state: GameState) -> Dict[str, Any]:
     if not pending:
         return {"dice_result": None, "pending_check": None, "_route": "done"}
 
-    check_target = pending.get("checkTarget", pending.get("check_target", "未指定属性"))
+    check_target_raw = pending.get("checkTarget", pending.get("check_target", "未指定属性"))
     difficulty = pending.get("difficulty", 10)
     description = pending.get("description", "检定")
+
+    # ⚠️ Normalise: DM may send "worldParams.洞察值" but char_attrs has key "洞察值".
+    # Strip the "worldParams." prefix so the lookup matches the actual attribute dict.
+    WPP = "worldParams."
+    check_target = check_target_raw[len(WPP):] if check_target_raw.startswith(WPP) else check_target_raw
 
     # Get character attributes — use the first player's character
     char_attrs = {}
@@ -44,7 +49,30 @@ async def check_node(state: GameState) -> Dict[str, Any]:
         char_attrs = next(iter(character_attributes.values()), {})
 
     # Get the attribute value for the check
-    attr_value = char_attrs.get(check_target, 10)
+    attr_value = char_attrs.get(check_target)
+    if attr_value is None:
+        # Fallback 1: look in characters_data[].attributes (which includes
+        #    worldParams merged by _parse_character_node in script_loader)
+        for c in state.get("characters_data", []):
+            if isinstance(c, dict):
+                v = c.get("attributes", {}).get(check_target)
+                if v is not None:
+                    attr_value = v
+                    break
+    if attr_value is None:
+        # Fallback 2: look in current plot node's worldParams
+        current_node = state.get("current_node", "")
+        plot_graph = state.get("plot_graph", {})
+        for n in plot_graph.get("nodes", []):
+            if isinstance(n, dict) and n.get("id") == current_node:
+                wp = (n.get("data") or {}).get("worldParams", {})
+                attr_value = wp.get(check_target)
+                if attr_value is not None:
+                    break
+    if attr_value is None:
+        attr_value = 10  # ultimate fallback
+        print(f"[check_node] ⚠️ 属性 '{check_target}' (原始: '{check_target_raw}') "
+              f"未找到，使用默认值 10")
 
     # Roll the dice
     result = roll_check(attr_value, difficulty)

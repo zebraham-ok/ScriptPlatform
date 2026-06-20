@@ -242,6 +242,8 @@ def generate_image_url(
             negative_prompt=(
                 "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，"
                 "蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲。"
+                "昏暗，漆黑，过暗，死黑，曝光不足，看不清细节。"
+                "模糊，虚化，柔焦，低清晰度，噪点过多。"
             ),
             size=size,
         )
@@ -320,7 +322,10 @@ async def generate_scene_image(
     if character_visuals:
         prompt += f" 场景中出现主角：{character_visuals}。"
 
-    prompt += " 风格为角色扮演游戏，写实风格，电影感，细节丰富，4K画质。"
+    prompt += (
+        " 风格为角色扮演游戏，半写实风格，电影感，细节丰富，4K画质。"
+        "明亮的自然光照，高可见度，清晰锐利的环境细节，适中的对比度与饱和度。"
+    )
 
     print(f"🎨 [Scene] 开始生成场景图片: scene={scene_name}, desc={desc_text[:80]}...")
 

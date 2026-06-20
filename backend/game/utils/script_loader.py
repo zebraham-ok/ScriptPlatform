@@ -59,7 +59,7 @@ def load_script_data(script_json: dict) -> dict:
         attrs = {}
         for param in char_params:
             if isinstance(param, dict):
-                pname = param.get("name", "")
+                pname = param.get("name", "").strip()
                 ptype = param.get("paramType", "number")
                 if ptype == "number":
                     min_v = param.get("minValue", 0)
@@ -69,6 +69,12 @@ def load_script_data(script_json: dict) -> dict:
                 elif ptype == "category":
                     cats = param.get("categories", [])
                     attrs[pname] = cats[0] if cats else ""
+        # ⚠️ Also merge each character's own attributes (from worldParams parsed
+        #    by _parse_character_node). Without this, worldParams values
+        #    like "洞察值", "因果值" are not accessible to check_node.
+        for k, v in char.get("attributes", {}).items():
+            if k.strip() not in attrs:
+                attrs[k.strip()] = v
         result["character_attributes"][char_id] = attrs
 
     # Locations

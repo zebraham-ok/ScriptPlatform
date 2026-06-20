@@ -88,13 +88,26 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
     # Check for DM actions in the latest response
     dm_actions = state.get("dm_actions", [])
     has_node_update = False
+    _scene_changed: bool = False
     for action in dm_actions:
         action_type = action.get("type", "")
         # Action may have a nested "params" dict, or the action itself IS the params
         params = action.get("params") or action
 
+        # --- Handle change_scene action: switch scene/location without node change ---
+        if action_type == "change_scene":
+            if isinstance(params, dict):
+                new_scene_name = params.get("name", "")
+                new_scene_desc = params.get("description", "")
+                if new_scene_name:
+                    updates["scene"] = new_scene_name
+                    updates["scene_description"] = new_scene_desc or updates.get("scene_description", state.get("scene_description", ""))
+                    _scene_changed = True
+                    print(f"[playing_node] 🏞️  场景切换 (非节点变更): → {new_scene_name}")
+                    print(f"     场景描述: {new_scene_desc[:120] if new_scene_desc else '(沿用当前)'}")
+
         # --- Handle update_node action: advance plot node ---
-        if action_type == "update_node":
+        elif action_type == "update_node":
             target_node_id = params.get("nodeId", "") if isinstance(params, dict) else ""
             if target_node_id:
                 from game.utils.script_loader import validate_node_transition

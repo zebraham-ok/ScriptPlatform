@@ -536,10 +536,22 @@ function _bindSocketEvents(
         scene: {
           location: data.scene || data.location || '',
           description: data.description || data.scene_description || '',
-          imageUrl: data.image || data.imageUrl || s.scene?.imageUrl || null,
+          // Only carry over old imageUrl when staying in the same scene.
+          // When location changes, clear to null — image_message will supply the new image.
+          imageUrl: data.image || data.imageUrl || (
+            (data.scene || data.location) === s.scene?.location ? s.scene?.imageUrl : null
+          ),
           characters: data.characters || [],
         },
       }));
+    });
+
+    socket.on('node_changed', (data: any) => {
+      // Node change in the plot tree — scene_update follows immediately and sets location/image
+      console.log('[Socket] node_changed:', data.currentNodeName, '←', data.previousNodeName);
+      // NOTE: Do NOT update scene.location here — that would make the scene_update
+      // handler's "location changed → clear imageUrl" check always evaluate to false,
+      // causing old scene images to persist across node transitions.
     });
 
     socket.on('image_message', (data: any) => {
