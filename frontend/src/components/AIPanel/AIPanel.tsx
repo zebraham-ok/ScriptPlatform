@@ -26,6 +26,10 @@ const pageLabelMap: Record<PageType, string> = {
   worldview: '世界观构建',
   plot: '情节建议',
   mechanics: '功能建议',
+  plaza: '',
+  game: '',
+  lobby: '',
+  role_select: '',
 };
 
 const AIPanel: React.FC<AIPanelProps> = () => {

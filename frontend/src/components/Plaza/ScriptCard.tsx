@@ -15,9 +15,9 @@ const ScriptCard: React.FC<ScriptCardProps> = ({ script, onClick }) => {
     >
       {/* Cover placeholder */}
       <div className="w-full h-32 rounded-lg mb-3 bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center group-hover:from-slate-600 group-hover:to-slate-700 transition-colors">
-        {script.coverPath ? (
+        {script.cover ? (
           <img
-            src={script.coverPath}
+            src={script.cover}
             alt={script.title}
             className="w-full h-full object-cover rounded-lg"
           />

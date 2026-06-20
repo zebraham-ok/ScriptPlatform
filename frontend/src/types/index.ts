@@ -188,6 +188,7 @@ export interface GameRoomInfo {
   totalRounds: number;
   owner: string;
   shareUrl: string;
+  players?: Record<string, PlayerInfo>;
 }
 
 export interface PlayerInfo {

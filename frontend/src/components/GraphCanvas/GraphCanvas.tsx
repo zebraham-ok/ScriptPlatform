@@ -40,6 +40,10 @@ const mapNodeType: Record<PageType, string> = {
   worldview: 'characterNode',
   item: 'itemNode',
   mechanics: 'characterNode',
+  plaza: '',
+  game: '',
+  lobby: '',
+  role_select: '',
 };
 
 const defaultLabels: Record<PageType, string> = {
@@ -49,6 +53,10 @@ const defaultLabels: Record<PageType, string> = {
   worldview: '',
   item: '新物品',
   mechanics: '',
+  plaza: '',
+  game: '',
+  lobby: '',
+  role_select: '',
 };
 
 const GraphCanvas: React.FC<GraphCanvasProps> = ({ pageType }) => {
