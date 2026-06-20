@@ -16,7 +16,7 @@ const ChatPanel: React.FC = () => {
 
   const renderMessage = (msg: ChatMessage) => {
     const isOwn = msg.senderId === playerId;
-    const isDM = msg.type === 'dm';
+    const isDM = msg.type === 'dm' || msg.type === 'dm_narration';
     const isSystem = msg.type === 'system';
     const isNarration = msg.type === 'narration';
     const isPrivate = msg.type === 'private';
@@ -81,13 +81,13 @@ const ChatPanel: React.FC = () => {
               📖 {msg.narration}
             </div>
           )}
-          {msg.dmOptions && msg.dmOptions.length > 0 && (
+          {msg.dmOptions && msg.dmOptions.length > 0 && !useGameStore.getState().dmThinking && (
             <div className="mt-3 flex flex-wrap gap-2">
               {msg.dmOptions.map((opt: string, i: number) => (
                 <button
                   key={i}
-                  className="dm-option-btn"
-                  onClick={() => useGameStore.getState().selectDMOption(i)}
+                  className="px-3 py-1.5 text-sm rounded-full border border-amber-500/40 text-amber-300 bg-amber-500/5 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-200 transition-colors cursor-pointer"
+                  onClick={() => useGameStore.getState().selectDMOptionByText(opt)}
                 >
                   {opt}
                 </button>
@@ -119,10 +119,10 @@ const ChatPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900">
+    <div className="flex flex-col h-full bg-slate-900/60 backdrop-blur-sm">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-700/50">
-        <h3 className="text-sm font-semibold text-slate-300">📜 游戏剧情</h3>
+      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-700/30">
+        <h3 className="text-sm font-semibold text-slate-200">📜 游戏剧情</h3>
       </div>
 
       {/* Messages */}
@@ -150,7 +150,11 @@ const ChatPanel: React.FC = () => {
               <span className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
               <span className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
-            <span className="text-xs text-slate-500">主持人正在思考中...</span>
+            <span className="text-xs text-amber-400/80">
+              {useGameStore.getState().diceResults.length > 0
+                ? '主持人正在处理检定结果...'
+                : '主持人正在思考中...'}
+            </span>
           </div>
         )}
       </div>

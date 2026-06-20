@@ -424,14 +424,10 @@ def test_dice():
 
     # roll_check
     result = roll_check(14, 10)
-    assert 1 <= result["roll"] <= 20
-    assert result["modifier"] == 2  # (14-10)//2
-    assert result["total"] == result["roll"] + result["modifier"]
+    assert 0 <= result["roll"] <= 14  # randint(0, attr_value)
     assert isinstance(result["success"], bool)
-
-    # Critical success
-    # We can't guarantee a roll of 20, but we can verify the logic
-    print(f"    d20 range OK, check total={result['total']} (roll={result['roll']}+{result['modifier']})")
+    assert result["success"] == (result["roll"] >= result["difficulty"])
+    print(f"    roll_check OK: randint(0,14)={result['roll']} vs difficulty={result['difficulty']} → {'成功' if result['success'] else '失败'}")
 
     # parse_dice_expression
     parsed = parse_dice_expression("2d6+3")

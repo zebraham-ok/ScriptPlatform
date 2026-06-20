@@ -94,6 +94,8 @@ def build_dm_context(state: GameState) -> str:
             entity_names[f"item:{eid}"] = f"物品「{name}」"
             entity_names[eid] = f"物品「{name}」"
 
+    bound_check_ids = []  # collected from current node, used later in mechanics section
+
     if current_node or plot_graph.get("nodes"):
         from game.utils.script_loader import get_node_advancement_info
         node_info = get_node_advancement_info(current_node, plot_graph, plot_inspection)
@@ -112,6 +114,34 @@ def build_dm_context(state: GameState) -> str:
                 action_lines.append(f"    · {action.strip()} → {result[:60]}")
             if action_lines:
                 parts.append("🎯 当前节点可选行动：\n" + "\n".join(action_lines))
+
+        # Current node's bound checks — these MUST be considered at this node
+        bound_check_ids = curr_data.get("boundChecks", [])
+        if bound_check_ids:
+            mechanics_checks = state.get("mechanics_checks", [])
+            checks_index = {}
+            for ch in mechanics_checks:
+                if isinstance(ch, dict):
+                    checks_index[ch.get("id", "")] = ch
+
+            bound_lines = []
+            for chk_id in bound_check_ids:
+                chk = checks_index.get(chk_id, {})
+                if chk:
+                    name = chk.get("name", chk_id)
+                    target = chk.get("checkTarget", "?")
+                    diff = chk.get("difficulty", 5)
+                    desc = chk.get("triggerCondition", "")
+                    success = chk.get("successEffect", "")
+                    failure = chk.get("failureEffect", "")
+                    bound_lines.append(
+                        f"  ⚡ {name}\n"
+                        f"     检定属性：{target}  难度：{diff}\n"
+                        f"     触发条件：{desc}\n"
+                        f"     成功→{success}" + (f"  失败→{failure}" if failure else "")
+                    )
+            if bound_lines:
+                parts.append("⚡ 当前节点绑定检定（当剧情推进到此节点时务必触发）：\n" + "\n".join(bound_lines))
 
         # Node history trail
         if node_history:
@@ -170,18 +200,28 @@ def build_dm_context(state: GameState) -> str:
         name = plot_inspection.get("node_names", {}).get(current_node, current_node)
         parts.append(f"当前剧情节点：{name}")
 
-    # Mechanics
+    # Mechanics — show all checks with full detail, excluding ones already bound to current node
     mechanics_checks = state.get("mechanics_checks", [])
     if mechanics_checks:
+        # Collect bound check IDs from current node to avoid duplication
+        curr_bound = set(bound_check_ids) if bound_check_ids else set()
         check_lines = []
-        for ch in mechanics_checks[:5]:
+        for ch in mechanics_checks:
             if isinstance(ch, dict):
-                check_lines.append(
-                    f"  - {ch.get('name', '')}: {ch.get('triggerCondition', '')}, "
-                    f"难度{ch.get('difficulty', 5)}, 目标{ch.get('checkTarget', '')}"
+                ch_id = ch.get("id", "")
+                if ch_id in curr_bound:
+                    continue  # already shown in bound checks section above
+                success = ch.get("successEffect", "")
+                failure = ch.get("failureEffect", "")
+                line = (
+                    f"  - {ch.get('name', '')}\n"
+                    f"    触发条件：{ch.get('triggerCondition', '')}\n"
+                    f"    检定属性：{ch.get('checkTarget', '')}  难度：{ch.get('difficulty', 5)}\n"
+                    f"    成功→{success}" + (f"  失败→{failure}" if failure else "")
                 )
+                check_lines.append(line)
         if check_lines:
-            parts.append("可用检定：\n" + "\n".join(check_lines))
+            parts.append("📋 全部可用检定（当前节点已绑定检定的详情见上方⚡部分）：\n" + "\n".join(check_lines))
 
     # Chat history (recent)
     chat = state.get("chat_history", [])

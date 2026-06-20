@@ -92,3 +92,5 @@ class GameState(TypedDict, total=False):
     # === 结局 ===
     ending_reached: bool
     ending_data: Optional[dict]        # ending content
+    _end_node_reached: bool            # deferred ending flag: end checkpoint hit, end after next DM response
+    end_checkpoints: List[str]         # plot end checkpoint node IDs

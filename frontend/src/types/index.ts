@@ -197,6 +197,7 @@ export interface PlayerInfo {
   characterId: string | null;
   characterName: string | null;
   attributes: Record<string, any>;
+  inventory: Array<{ name: string; description?: string; quantity?: number }>;
   isReady?: boolean;
 }
 
@@ -205,7 +206,7 @@ export interface ChatMessage {
   senderId: string;
   senderName: string;
   content: string;
-  type: 'player' | 'dm' | 'system' | 'narration' | 'dice' | 'private';
+  type: 'player' | 'dm' | 'dm_narration' | 'system' | 'narration' | 'dice' | 'private';
   timestamp: number;
   dmOptions?: string[];
   narration?: string;
@@ -224,10 +225,19 @@ export interface DiceResult {
   id: string;
   playerName: string;
   target: string;
+  description: string;
   dice: number;
   difficulty: number;
   result: 'success' | 'failure';
   timestamp: number;
+}
+
+export interface PendingVote {
+  name: string;
+  options: string[];
+  results: Record<string, number>;
+  winner?: string;
+  complete?: boolean;
 }
 
 export interface EndingData {

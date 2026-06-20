@@ -131,6 +131,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     updates["scene_description"] = raw_scene_desc or opening_text
     updates["opening_narration"] = opening_text
     updates["_opening_pending"] = opening_pending
+    updates["_opening_is_ai"] = not opening_pending  # True if AI successfully generated
     updates["_opening_prompt_data"] = {
         "script_title": script_title,
         "world_summary": world_summary,
@@ -141,7 +142,8 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         "raw_scene_desc": raw_scene_desc,
     } if opening_pending else None
     updates["_scene_image_prompt"] = _build_image_prompt(
-        display_scene_name, raw_scene_desc, script_title, plot_graph, current_node_id
+        display_scene_name, raw_scene_desc, script_title, plot_graph,
+        current_node_id, characters_data, locations_data
     )
 
     print(f"[opening_node] Done: stage={updates['stage']}, "
@@ -189,13 +191,19 @@ def _resolve_scene_name(
                     return name
                 break
 
-    # Fallback: first location name (only if meaningful, not a placeholder)
+    # Fallback: first location name (prefer label over placeholder name)
     if locations_data:
         first_loc = locations_data[0]
         if isinstance(first_loc, dict):
             name = first_loc.get("name", "")
+            label = first_loc.get("label", "")
+            # Use label if name is a placeholder
+            if label and name in ("新地点", "新位置", "未命名地点", ""):
+                return label
             if name and name not in ("新地点", "新位置", "未命名地点"):
                 return name
+            if label:
+                return label
 
     return "第一幕"
 
@@ -219,10 +227,11 @@ def _build_role_details(available_roles: list, characters_data: list) -> list:
                     # "worldParams.因果值" → displayName="因果值", path="worldParams.因果值"
                     parts = field.split(".", 1)
                     display = parts[1] if len(parts) > 1 else parts[0]
+                    field_type = _infer_attr_type(field, char_info)
                     parsed_custom.append({
                         "path": field,
                         "displayName": display,
-                        "type": "number",  # default to number; could be inferred in future
+                        "type": field_type,
                     })
             details.append({
                 "id": role_id,
@@ -240,6 +249,57 @@ def _build_role_details(available_roles: list, characters_data: list) -> list:
     return details
 
 
+def _infer_attr_type(field_path: str, char_info: dict) -> str:
+    """Infer whether a customizable field is 'text' or 'number'.
+
+    Resolution order:
+    1. Look up the value in char_info attributes (both flat and nested)
+    2. If found: isinstance check (int/float → "number", str → "text")
+    3. If not found: heuristics based on field name
+    """
+    # "name" is always text
+    if field_path == "name":
+        return "text"
+
+    attrs = char_info.get("attributes", {})
+
+    if "." in field_path:
+        # Dotted path: e.g. "worldParams.魔力值" → look up "魔力值" in attributes
+        _, key = field_path.split(".", 1)
+        if key in attrs:
+            val = attrs[key]
+            if isinstance(val, (int, float)):
+                return "number"
+            if isinstance(val, str):
+                return "text"
+        # Default for prefixed (world params): numeric
+        return "number"
+    else:
+        # Simple name: check char_info top-level and attributes
+        # Top-level fields like "age", "gender", etc.
+        if field_path in char_info:
+            val = char_info[field_path]
+            if isinstance(val, (int, float)):
+                return "number"
+            if isinstance(val, str):
+                return "text"
+        # Check in attributes
+        if field_path in attrs:
+            val = attrs[field_path]
+            if isinstance(val, (int, float)):
+                return "number"
+            if isinstance(val, str):
+                return "text"
+        # Heuristic fallback
+        if field_path in ("age",):
+            return "text"   # age could be "中年", "30岁" etc.
+        if field_path in ("gender", "appearance", "personality", "identity",
+                          "description", "motivation", "alias", "label"):
+            return "text"
+        # Anything else defaults to number
+        return "number"
+
+
 def _summarize_world(world_setting: list) -> str:
     """Build a condensed world summary string."""
     if not world_setting:
@@ -255,7 +315,7 @@ def _summarize_world(world_setting: list) -> str:
 
 
 def _summarize_characters(characters_data: list) -> str:
-    """Build a condensed character summary."""
+    """Build a condensed character summary including appearance."""
     if not characters_data:
         return ""
     lines = []
@@ -264,28 +324,42 @@ def _summarize_characters(characters_data: list) -> str:
             name = c.get("name", "无名")
             desc = c.get("description", "")
             ident = c.get("identity", "")
+            appearance = c.get("appearance", "")
             line = f"- {name}"
             if ident:
                 line += f"（{ident}）"
             if desc:
                 line += f"：{desc[:80]}"
+            if appearance:
+                line += f" [外貌：{appearance[:60]}]"
             lines.append(line)
     return "\n".join(lines) if lines else ""
 
 
 def _summarize_locations(locations_data: list) -> str:
-    """Build a condensed location summary."""
+    """Build a condensed location summary using labels and atmosphere."""
     if not locations_data:
         return ""
     lines = []
     for loc in locations_data[:4]:
         if isinstance(loc, dict):
             name = loc.get("name", "")
+            label = loc.get("label", "")
+            display = label or name
             desc = loc.get("description", "")
-            if name:
-                line = f"- {name}"
+            atmosphere = loc.get("atmosphere", "")
+            terrain = loc.get("terrain", "")
+            if display:
+                line = f"- {display}"
+                extras = []
                 if desc:
-                    line += f"：{desc[:60]}"
+                    extras.append(desc[:60])
+                if atmosphere:
+                    extras.append(f"氛围：{atmosphere[:40]}")
+                if terrain:
+                    extras.append(f"地形：{terrain[:30]}")
+                if extras:
+                    line += f"：{'；'.join(extras)}"
                 lines.append(line)
     return "\n".join(lines) if lines else ""
 
@@ -296,8 +370,11 @@ def _build_image_prompt(
     script_title: str,
     plot_graph: dict,
     current_node_id: str,
+    characters_data: Optional[List[dict]] = None,
+    locations_data: Optional[List[dict]] = None,
 ) -> str:
-    """Build a prompt string for scene image generation (consumed by game_server)."""
+    """Build a rich prompt string for scene image generation, incorporating
+    character appearances and location atmosphere for visual fidelity."""
     parts = [f"[{script_title}] 场景：{scene_name}"]
 
     # Try to get scene description from current node
@@ -311,6 +388,40 @@ def _build_image_prompt(
     desc = node_desc or scene_desc
     if desc:
         parts.append(desc[:200])
+
+    # Inject location atmosphere/description for visual mood
+    if locations_data:
+        for loc in locations_data[:2]:  # first 2 locations
+            if isinstance(loc, dict):
+                loc_label = loc.get("label", "") or loc.get("name", "")
+                loc_desc = loc.get("description", "")
+                loc_atmosphere = loc.get("atmosphere", "")
+                loc_terrain = loc.get("terrain", "")
+                if loc_label and loc_label in scene_name:
+                    if loc_desc:
+                        parts.append(f"环境细节：{loc_desc[:150]}")
+                    if loc_atmosphere:
+                        parts.append(f"氛围：{loc_atmosphere[:100]}")
+                    if loc_terrain:
+                        parts.append(f"地形：{loc_terrain[:80]}")
+                    break
+
+    # Inject character appearance descriptions
+    if characters_data:
+        char_visuals = []
+        for c in characters_data[:4]:  # max 4 characters
+            if isinstance(c, dict):
+                name = c.get("name", "")
+                appearance = c.get("appearance", "")
+                identity = c.get("identity", "")
+                if appearance and name:
+                    visual = f"{name}"
+                    if identity:
+                        visual += f"（{identity}）"
+                    visual += f"外貌：{appearance[:120]}"
+                    char_visuals.append(visual)
+        if char_visuals:
+            parts.append("场景中的人物：" + "；".join(char_visuals))
 
     return "，".join(parts)
 
@@ -350,14 +461,17 @@ async def _generate_ai_opening(
     raw_scene_desc: str,
 ) -> str:
     """Use AI to generate a rich DM opening narration."""
+    # Build character context for AI background knowledge (not for listing)
+    char_context = f"\n\n**场上人物（仅供背景参考，不要在开场白中列出可选角色）**：\n{char_summary}" if char_summary else ""
+
     prompt = f"""你是一个专业的跑团/剧本杀 DM（主持人）。请为以下剧本写一个开场白，要求：
 
 1. 用生动、沉浸式的语言营造氛围
 2. 简要引入世界观
-3. 描述当前场景
-4. 介绍场上可扮演的角色（不剧透秘密身份）
-5. 给予玩家自然的行动引导
-6. 长度控制在 300 字以内
+3. 描述当前场景，自然地融入在场人物的描写（作为场景的一部分，而非列出可选角色）
+4. 给予玩家自然的行动引导
+5. 长度控制在 300 字以内
+6. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
 
 ---
 
@@ -369,10 +483,7 @@ async def _generate_ai_opening(
 **当前场景**：{scene_name}
 
 **场景描述**：
-{raw_scene_desc or "场景尚未详细描述"}
-
-**可扮演角色**：
-{char_summary or "（暂无角色）"}
+{raw_scene_desc or "场景尚未详细描述"}{char_context}
 
 **地点**：
 {loc_summary or "（暂无地点）"}
@@ -394,7 +505,8 @@ async def _generate_ai_opening(
                 model=get_default_model(),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.8,
-                max_tokens=800,
+                max_tokens=2000,
+                stop=None,
             )
             text = response.choices[0].message.content or ""
             if text.strip():

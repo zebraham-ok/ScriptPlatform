@@ -9,7 +9,7 @@ import uuid
 import asyncio
 import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, List
 
 import socketio
 from game.state import GameState
@@ -100,6 +100,8 @@ def _build_initial_state(room: dict) -> dict:
         "vote_results": {},
         "ending_reached": False,
         "ending_data": None,
+        "_end_node_reached": False,
+        "end_checkpoints": [],
         "_need_dm_narration": False,
         "_route": "wait",
     }
@@ -130,7 +132,16 @@ async def _broadcast_room_state(room_id: str, extra: Optional[dict] = None):
         "stage": room.get("stage", "LOBBY"),
         "mode": room.get("mode", "sandbox"),
         "players": [
-            {"sid": s, "nickname": p.get("nickname", ""), "characterId": p.get("characterId", "")}
+            {
+                "sid": s,
+                "playerId": p.get("playerId", ""),
+                "nickname": p.get("nickname", ""),
+                "characterId": p.get("characterId", ""),
+                "characterName": p.get("characterName", ""),
+                "attributes": p.get("attributes", {}),
+                "inventory": p.get("inventory", []),
+                "isReady": p.get("isReady", False),
+            }
             for s, p in players_in_room.items()
         ],
         "roles": roles,
@@ -338,6 +349,7 @@ async def join_room(sid: str, data: dict):
             "characterId": None,
             "characterName": None,
             "attributes": {},
+            "inventory": [],
             "connectedAt": datetime.now().isoformat(),
         }
         sid_to_room[sid] = room_id
@@ -430,6 +442,14 @@ async def select_role(sid: str, data: dict):
         room["assignedRoles"][character_id] = sid
         if sid in room["players"]:
             room["players"][sid]["characterId"] = character_id
+            # Resolve character name from role_details
+            role_details = room["state"].get("_role_details", [])
+            char_info = next((r for r in role_details if r.get("id") == character_id), None)
+            if char_info:
+                room["players"][sid]["characterName"] = char_info.get("name", character_id)
+            # Ensure inventory is initialized
+            if "inventory" not in room["players"][sid]:
+                room["players"][sid]["inventory"] = []
 
     room["state"]["assigned_roles"] = room["assignedRoles"].copy()
 
@@ -494,9 +514,8 @@ async def _transition_role_select_to_playing(room_id: str):
     script_title = state.get("script_title", "未命名剧本")
     scene_desc = state.get("scene_description", "")
     display_scene_name = state.get("scene", "第一幕")
-    opening_narration = state.get("opening_narration", "")
 
-    # Send game-start announcement (opening narration was already sent during ROLE_SELECT)
+    # Send game-start announcement
     start_msg = {
         "role": "system",
         "sender": "系统",
@@ -507,6 +526,13 @@ async def _transition_role_select_to_playing(room_id: str):
     chat = list(state.get("chat_history", []))
     chat.append(start_msg)
     state["chat_history"] = chat
+
+    # Emit initial scene info (before async image generation)
+    await sio.emit("scene_update", {
+        "scene": display_scene_name,
+        "description": scene_desc,
+        "image": None,
+    }, room=room_id)
 
     # Trigger scene image generation for the initial node
     current_node = state.get("current_node", "")
@@ -522,7 +548,8 @@ async def _transition_role_select_to_playing(room_id: str):
 
     if display_scene_name and display_scene_name not in ("大厅", "Lobby", "等待大厅", "灵感征集大厅"):
         asyncio.create_task(_generate_scene_image_for_node(
-            room_id, display_scene_name, initial_node_scene, script_title
+            room_id, display_scene_name, initial_node_scene, script_title,
+            characters_data=state.get("characters_data", [])
         ))
 
     await _broadcast_room_state(room_id)
@@ -540,6 +567,7 @@ async def submit_character_sheet(sid: str, data: dict):
     character_id = data.get("characterId", "")
     attributes = data.get("attributes", {})
 
+    player_info = room["players"].get(sid, {})
     if sid in room["players"]:
         room["players"][sid]["attributes"] = attributes
         room["players"][sid]["characterId"] = character_id
@@ -550,8 +578,11 @@ async def submit_character_sheet(sid: str, data: dict):
     room["state"]["character_attributes"] = char_attrs
 
     await sio.emit("character_update", {
+        "playerId": player_info.get("playerId", sid),
         "characterId": character_id,
+        "characterName": player_info.get("characterName", ""),
         "attributes": attributes,
+        "inventory": player_info.get("inventory", []),
     }, room=room_id)
 
     # Auto-mark player as ready after submitting character sheet
@@ -708,13 +739,14 @@ async def start_game(sid: str, data: dict):
     # ========================================
     #  Read opening_node outputs from state
     # ========================================
-    opening_narration = new_state.get("opening_narration", "")
     display_scene_name = new_state.get("scene", "第一幕")
     role_details = new_state.get("_role_details", [])
     available_roles = new_state.get("available_roles", [])
     scene_image_prompt = new_state.get("_scene_image_prompt", "")
     opening_pending = new_state.get("_opening_pending", False)
     opening_prompt_data = new_state.get("_opening_prompt_data")
+    opening_is_ai = new_state.get("_opening_is_ai", False)
+    opening_narration = new_state.get("opening_narration", "")
 
     # ========================================
     #  Route by stage (authoritative, not hidden flag)
@@ -723,19 +755,18 @@ async def start_game(sid: str, data: dict):
         room["stage"] = "ROLE_SELECT"
         await _emit_stage_change(room_id, "GENERATE", "ROLE_SELECT")
 
-        # Send DM opening as chat message (visible during role selection)
-        await sio.emit("chat_message", {
-            "role": "dm", "sender": "DM",
-            "content": opening_narration,
-            "timestamp": datetime.now().isoformat(),
-        }, room=room_id)
-        chat = list(new_state.get("chat_history", []))
-        chat.append({
-            "role": "dm", "sender": "DM",
-            "content": opening_narration,
-            "timestamp": datetime.now().isoformat(),
-        })
-        new_state["chat_history"] = chat
+        # Send AI opening narration if available (skip fallback template)
+        if opening_is_ai and opening_narration:
+            dm_opening_msg = {
+                "role": "dm",
+                "sender": "DM",
+                "content": opening_narration,
+                "timestamp": datetime.now().isoformat(),
+            }
+            await sio.emit("chat_message", dm_opening_msg, room=room_id)
+            chat = list(new_state.get("chat_history", []))
+            chat.append(dm_opening_msg)
+            new_state["chat_history"] = chat
 
         # Send available roles to all players (immediately, before AI opening)
         print(f"[GameServer] Emitting role_update: availableRoles={available_roles}, "
@@ -761,22 +792,33 @@ async def start_game(sid: str, data: dict):
         room["stage"] = "PLAYING"
         await _emit_stage_change(room_id, "GENERATE", "PLAYING")
 
-        # Send DM opening as chat message
-        dm_opening_msg = {
-            "role": "dm", "sender": "DM",
-            "content": opening_narration,
-            "timestamp": datetime.now().isoformat(),
-        }
-        await sio.emit("chat_message", dm_opening_msg, room=room_id)
-        chat = list(new_state.get("chat_history", []))
-        chat.append(dm_opening_msg)
-        new_state["chat_history"] = chat
+        # Send AI opening narration if available (skip fallback template)
+        if opening_is_ai and opening_narration:
+            dm_opening_msg = {
+                "role": "dm",
+                "sender": "DM",
+                "content": opening_narration,
+                "timestamp": datetime.now().isoformat(),
+            }
+            await sio.emit("chat_message", dm_opening_msg, room=room_id)
+            chat = list(new_state.get("chat_history", []))
+            chat.append(dm_opening_msg)
+            new_state["chat_history"] = chat
+
+        # Emit initial scene info immediately (before image is ready)
+        scene_desc = new_state.get("scene_description", "")
+        await sio.emit("scene_update", {
+            "scene": display_scene_name,
+            "description": scene_desc,
+            "image": None,
+        }, room=room_id)
 
         # Trigger scene image generation
         if display_scene_name and display_scene_name not in ("大厅", "Lobby", "等待大厅", "灵感征集大厅"):
             script_title = new_state.get("script_title", "")
             asyncio.create_task(_generate_scene_image_for_node(
-                room_id, display_scene_name, scene_image_prompt, script_title
+                room_id, display_scene_name, scene_image_prompt, script_title,
+                characters_data=new_state.get("characters_data", [])
             ))
 
     room["state"] = new_state
@@ -848,8 +890,8 @@ async def send_message(sid: str, data: dict):
     # Use DM route
     room["state"]["_route"] = "dm_turn"
 
-    # Invoke graph
-    await sio.emit("dm_status", {"status": "主持人正在翻剧本..."}, room=room_id)
+    # Invoke graph — tell frontend DM is thinking
+    await sio.emit("dm_status", {"thinking": True, "status": "主持人正在翻剧本..."}, room=room_id)
 
     new_state = await _invoke_graph(room, {})
 
@@ -864,6 +906,9 @@ async def send_message(sid: str, data: dict):
 
     # Emit results based on state changes
     await _process_graph_results(room_id, room, new_state)
+
+    # Clear thinking flag after all results are emitted
+    await sio.emit("dm_status", {"thinking": False}, room=room_id)
 
 
 async def _process_graph_results(room_id: str, room: dict, new_state: dict):
@@ -886,8 +931,9 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
         old_name = node_names.get(prev_node, prev_node) if prev_node else "起始"
         new_node_name = node_names.get(new_node, new_node)
         node_history = new_state.get("node_history", [])
-        print(f"[GameServer] 🌿 节点变更: [{prev_node}]{old_name} → [{new_node}]{new_node_name}")
-        print(f"[GameServer]    已访问路径: {' → '.join(node_history)}")
+        nh_names = [node_names.get(n, n) for n in node_history]
+        print(f"[GameServer] 🌿 节点变更已确认: {old_name} → {new_node_name}  "
+              f"(路径: {' → '.join(nh_names)})")
 
         # Extract scene description from the new node's data for image generation
         plot_graph = new_state.get("plot_graph", {})
@@ -909,30 +955,32 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
         # Spawn async scene image generation for the new node
         if new_node_scene_desc:
             script_title = room.get("scriptTitle", "")
+            room_state = room.get("state", {})
             asyncio.create_task(_generate_scene_image_for_node(
-                room_id, new_node_name, new_node_scene_desc, script_title
+                room_id, new_node_name, new_node_scene_desc, script_title,
+                characters_data=room_state.get("characters_data", [])
             ))
 
-    # DM response
+    # Dice result — emit BEFORE DM response so frontend enters "processing check" state first
+    dice_result = new_state.get("dice_result")
+    if dice_result:
+        await sio.emit("dice_roll", {
+            "result": dice_result,
+            "timestamp": datetime.now().isoformat(),
+        }, room=room_id)
+        room["state"]["dice_result"] = None  # consumed
+
+    # DM response + options (options hidden by frontend until dmThinking clears)
     dm_resp = new_state.get("dm_response", "")
+    dm_options = new_state.get("dm_options", [])
     if dm_resp:
         print(f"[GameServer] _process_graph_results: emitting dm_response "
-              f"({len(dm_resp)} chars): {dm_resp[:120]}...")
+              f"({len(dm_resp)} chars, options={len(dm_options)}): {dm_resp[:120]}...")
         await sio.emit("chat_message", {
             "role": "dm",
             "sender": "DM",
             "content": dm_resp,
-            "timestamp": datetime.now().isoformat(),
-        }, room=room_id)
-
-    # DM options
-    dm_options = new_state.get("dm_options", [])
-    if dm_options:
-        await sio.emit("chat_message", {
-            "role": "system",
-            "sender": "系统",
-            "content": "##OPTIONS##\n" + "\n".join(f"- {o}" for o in dm_options),
-            "options": dm_options,
+            "options": dm_options if dm_options else None,
             "timestamp": datetime.now().isoformat(),
         }, room=room_id)
 
@@ -943,15 +991,6 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
             "content": pmsg,
             "timestamp": datetime.now().isoformat(),
         }, to=target_sid)
-
-    # Dice result (consume immediately to prevent stale replays)
-    dice_result = new_state.get("dice_result")
-    if dice_result:
-        await sio.emit("dice_roll", {
-            "result": dice_result,
-            "timestamp": datetime.now().isoformat(),
-        }, room=room_id)
-        room["state"]["dice_result"] = None  # consumed
 
     # Scene update
     scene_desc = new_state.get("scene_description", "")
@@ -966,10 +1005,18 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
     # Character state updates
     char_attrs = new_state.get("character_attributes", {})
     if char_attrs:
+        # Resolve characterId→player_sid mapping from assignedRoles
+        assigned_roles = room.get("assignedRoles", {})
+        char_to_player = {cid: psid for cid, psid in assigned_roles.items()}
         for cid, attrs in char_attrs.items():
+            player_sid = char_to_player.get(cid, "")
+            player_info = room["players"].get(player_sid, {}) if player_sid else {}
             await sio.emit("character_update", {
+                "playerId": player_info.get("playerId", player_sid),
                 "characterId": cid,
+                "characterName": player_info.get("characterName", ""),
                 "attributes": attrs,
+                "inventory": player_info.get("inventory", []),
             }, room=room_id)
 
     # Ending
@@ -1061,17 +1108,16 @@ async def _retry_ai_opening_background(
         if ai_text and ai_text != new_state.get("opening_narration", ""):
             # Update state with better AI opening
             new_state["opening_narration"] = ai_text
+            new_state["_opening_is_ai"] = True
             room["state"] = new_state
 
-            # Send as DM narration update to all players
+            # Send as DM narration to all players
             await sio.emit("chat_message", {
-                "role": "dm_narration",
+                "role": "dm",
                 "sender": "DM",
                 "content": ai_text,
                 "timestamp": datetime.now().isoformat(),
-                "replaces_opening": True,
             }, room=room_id)
-
             print(f"[GameServer] Background AI opening generated: {len(ai_text)} chars")
     except Exception as e:
         print(f"[GameServer] Background AI opening failed: {e}")
@@ -1086,6 +1132,7 @@ async def _generate_scene_image_for_node(
     scene_name: str,
     scene_description: str,
     script_title: str = "",
+    characters_data: Optional[List[dict]] = None,
 ):
     """
     Async background task: generate a scene image via Qwen,
@@ -1108,6 +1155,7 @@ async def _generate_scene_image_for_node(
             get_cached_scene_base64, scene_cache_exists,
             download_and_cache, scene_cache_path,
             cached_file_base64, get_character_visual,
+            build_character_visual_desc,
             url_to_base64, _url_to_base64_sync,
         )
 
@@ -1129,11 +1177,39 @@ async def _generate_scene_image_for_node(
             f"地点「{scene_name}」。画面内容：{desc_text}。"
         )
 
-        # Try to include character visual for consistency
+        # Try to include character visuals for all available characters
         scenario = script_title[:50] if script_title else "default"
-        char_visual = get_character_visual("林墨", scenario) or get_character_visual("林墨", "default")
-        if char_visual:
-            prompt += f" 场景中出现主角：{char_visual}。"
+        char_visuals = []
+        if characters_data:
+            for c in characters_data[:4]:  # max 4 characters
+                if isinstance(c, dict):
+                    cname = c.get("name", "")
+                    if not cname:
+                        continue
+                    # Try cached visual first, then build from character data
+                    cached = get_character_visual(cname, scenario) or get_character_visual(cname, "default")
+                    if cached:
+                        char_visuals.append(f"{cname}：{cached}")
+                    else:
+                        appearance = c.get("appearance", "")
+                        identity = c.get("identity", "")
+                        desc = c.get("description", "")
+                        if appearance:
+                            visual = f"{cname}（外貌：{appearance[:120]}）"
+                            char_visuals.append(visual)
+                        elif identity or desc:
+                            visual = build_character_visual_desc(cname, identity or "", desc or "")
+                            char_visuals.append(visual)
+        else:
+            # Fallback: try all cached character visuals
+            for try_name in ("林墨", "白旭尧", "陈秋萍"):
+                cached = get_character_visual(try_name, scenario) or get_character_visual(try_name, "default")
+                if cached:
+                    char_visuals.append(f"{try_name}：{cached}")
+                    break  # one is enough for fallback
+
+        if char_visuals:
+            prompt += f" 场景中出现角色：" + "；".join(char_visuals[:3]) + "。"
 
         prompt += " 风格为角色扮演游戏，写实风格，电影感，细节丰富，4K画质。"
 

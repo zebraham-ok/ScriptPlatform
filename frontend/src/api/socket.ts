@@ -124,10 +124,10 @@ export function emitSendMessage(roomId: string, content: string): void {
   s.emit('send_message', { roomId, content });
 }
 
-export function emitDMOptionSelect(roomId: string, optionIndex: number): void {
+export function emitDMOptionSelect(roomId: string, optionText: string): void {
   const s = getSocket();
   if (!s) return;
-  s.emit('dm_option_select', { roomId, optionIndex });
+  s.emit('dm_option_select', { roomId, option: optionText });
 }
 
 export function emitTurnSkip(roomId: string): void {

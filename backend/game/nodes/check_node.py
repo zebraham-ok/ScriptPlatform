@@ -56,7 +56,7 @@ async def check_node(state: GameState) -> Dict[str, Any]:
         "description": description,
         "attrValue": attr_value,
         "diceRoll": result["roll"],
-        "total": result["total"],
+        "total": result["roll"],
         "success": result["success"],
         "timestamp": datetime.now().isoformat(),
     }
@@ -70,11 +70,34 @@ async def check_node(state: GameState) -> Dict[str, Any]:
         effect = pending.get("failureEffect", "")
         attr_changes["_effect"] = effect or "检定失败..."
 
+    # Persist dice result to chat_history so AI can see the outcome in subsequent turns
+    result_text = (
+        f"🎲 检定「{description}」：{check_target}({attr_value}) "
+        f"vs 难度{difficulty} → 掷出{dice_result['diceRoll']} → "
+        f"{'✅ 成功' if result['success'] else '❌ 失败'}"
+    )
+    if result["success"]:
+        result_text += f"\n结果：{pending.get('successEffect', '检定成功')}"
+    else:
+        result_text += f"\n结果：{pending.get('failureEffect', '检定失败')}"
+
+    chat = list(state.get("chat_history", []))
+    chat.append({
+        "role": "system",
+        "sender": "系统",
+        "content": result_text,
+        "timestamp": datetime.now().isoformat(),
+    })
+
     updates: Dict[str, Any] = {
         "dice_result": dice_result,
         "pending_check": None,
+        "chat_history": chat,
         "_route": "done",
         "_attr_changes": attr_changes,
+        # Automatically trigger DM response so AI sees the dice result
+        # and can decide to advance the plot node based on success/failure
+        "_need_dm_narration": True,
     }
 
     return updates

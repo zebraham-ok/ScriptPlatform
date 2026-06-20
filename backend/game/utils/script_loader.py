@@ -110,6 +110,9 @@ def _parse_character_node(node: dict) -> dict:
         "label": node.get("label", data.get("name", "")),
         "name": data.get("name", node.get("label", "")),
         "description": data.get("description", ""),
+        "appearance": data.get("appearance", ""),
+        "identity": data.get("identity", ""),
+        "personality": data.get("personality", ""),
         "is_playable": data.get("isPlayable", False),  # default False: only explicitly marked characters are playable
         "min_players": data.get("minPlayers", 0),
         "max_players": data.get("maxPlayers", 1),
@@ -134,6 +137,7 @@ def _parse_location_node(node: dict) -> dict:
         "name": data.get("name", node.get("label", "")),
         "description": data.get("description", ""),
         "atmosphere": data.get("atmosphere", ""),
+        "terrain": data.get("terrain", ""),
     }
 
 

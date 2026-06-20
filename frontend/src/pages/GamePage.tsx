@@ -8,6 +8,7 @@ import ChatPanel from '../components/GameRoom/ChatPanel';
 import CharacterSheet from '../components/GameRoom/CharacterSheet';
 import SceneBackground from '../components/GameRoom/SceneBackground';
 import DiceAnimation from '../components/GameRoom/DiceAnimation';
+import VotePanel from '../components/GameRoom/VotePanel';
 import RoundBanner from '../components/GameRoom/RoundBanner';
 import EndingCard from '../components/GameRoom/EndingCard';
 import ActionInput from '../components/GameRoom/ActionInput';
@@ -47,6 +48,7 @@ const GamePage: React.FC = () => {
   }, [roomIdFromUrl]);
 
   const handleJoinViaLink = () => {
+    const storedUser = getStoredUser();
     const name = nicknameInput.trim() || storedUser?.displayName || '游客';
     if (!name) {
       message.warning('请输入昵称');
@@ -125,6 +127,17 @@ const GamePage: React.FC = () => {
     const selectedRole = roles.find((r) => r.id === myAssignedRoleId);
     const hasCustomFields = (selectedRole?.customizableAttributes?.length ?? 0) > 0;
 
+    // Calculate total of numeric custom attributes for validation
+    const cap = selectedRole?.numericAttributeCap ?? null;
+    const numericFields = (selectedRole?.customizableAttributes || []).filter(
+      (f) => f.type === 'number' || f.type === undefined
+    );
+    const totalAttrSum = numericFields.reduce(
+      (sum, f) => sum + parseInt(customAttrs[f.path] || '5', 10),
+      0
+    );
+    const capExceeded = cap != null && totalAttrSum > cap;
+
     return (
       <Modal
         title={null}
@@ -134,9 +147,12 @@ const GamePage: React.FC = () => {
         maskClosable={false}
         width={720}
         className="game-mode role-select-modal"
-        styles={{ body: { padding: 0, maxHeight: '80vh', overflowY: 'auto' } }}
+        styles={{
+          body: { padding: 0, maxHeight: '80vh', overflowY: 'auto', background: '#0f172a' },
+          content: { background: '#0f172a', border: '1px solid #334155' },
+        }}
       >
-        <div className="p-6 game-scrollbar" style={{ maxHeight: '80vh' }}>
+        <div className="p-6 game-scrollbar" style={{ maxHeight: '80vh', background: '#0f172a' }}>
           {/* Header */}
           <div className="text-center mb-6">
             <div className="text-5xl mb-3">🎭</div>
@@ -148,7 +164,7 @@ const GamePage: React.FC = () => {
 
           {/* Role cards */}
           {roles.length === 0 ? (
-            <div className="text-center text-slate-500 py-8">
+            <div className="text-center text-slate-400 py-8">
               <div className="text-4xl mb-3">⏳</div>
               <p>角色正在生成中，请稍候...</p>
             </div>
@@ -193,31 +209,40 @@ const GamePage: React.FC = () => {
               <h3 className="text-amber-400 font-bold mb-3 text-base">
                 📋 {selectedRole.name} — 自定义属性
               </h3>
-              {selectedRole.numericAttributeCap != null && (
-                <p className="text-xs text-slate-500 mb-3">
-                  属性上限：{selectedRole.numericAttributeCap}
-                </p>
+              {cap != null && (
+                <div className={`text-sm font-semibold mb-3 flex items-center gap-2
+                  ${capExceeded ? 'text-red-400' : 'text-slate-400'}`}>
+                  <span>属性上限：{cap}</span>
+                  <span className="text-xs px-2 py-0.5 rounded
+                    ${capExceeded ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'}">
+                    当前总计：{totalAttrSum}
+                  </span>
+                  {capExceeded && (
+                    <span className="text-xs text-red-400 animate-pulse">⚠ 超出上限</span>
+                  )}
+                </div>
               )}
               <div className="space-y-3">
                 {(selectedRole.customizableAttributes || []).map((field) => {
-                  const cap = selectedRole.numericAttributeCap || 99;
+                  const fieldCap = cap || 99;
                   const currentVal = parseInt(customAttrs[field.path] || '5', 10);
                   return (
                     <div key={field.path} className="flex items-center gap-3">
-                      <label className="text-sm text-slate-400 w-20 flex-shrink-0">
+                      <label className="text-sm text-slate-300 w-20 flex-shrink-0">
                         {field.displayName}
                       </label>
                       <input
                         type="range"
                         min={0}
-                        max={cap}
+                        max={fieldCap}
                         value={currentVal}
                         onChange={(e) =>
                           setCustomAttrs((p) => ({ ...p, [field.path]: e.target.value }))
                         }
                         className="flex-1 accent-amber-500"
                       />
-                      <span className="text-amber-400 font-mono text-sm w-8 text-right">
+                      <span className={`font-mono text-sm w-8 text-right
+                        ${capExceeded ? 'text-red-400' : 'text-amber-400'}`}>
                         {currentVal}
                       </span>
                     </div>
@@ -226,21 +251,30 @@ const GamePage: React.FC = () => {
               </div>
               <Button
                 onClick={handleSubmitCharacterSheet}
-                className="mt-4 !bg-amber-500 !border-amber-500 hover:!bg-amber-400"
+                disabled={capExceeded}
+                className={`mt-4 !bg-amber-500 !border-amber-500 hover:!bg-amber-400 !text-white
+                  ${capExceeded ? '!opacity-40 !cursor-not-allowed !bg-slate-600 !border-slate-600 hover:!bg-slate-600' : ''}`}
                 block
                 size="large"
               >
                 确认角色卡
               </Button>
+              {capExceeded && (
+                <p className="text-xs text-red-400 text-center mt-2">
+                  属性总和 ({totalAttrSum}) 不能超过上限 ({cap})，请调整后再确认
+                </p>
+              )}
             </div>
           )}
 
           {/* Status info + Ready button */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-slate-500 mb-3">
+            <p className="text-sm text-slate-400 mb-3">
               {myAssignedRoleId
                 ? (hasCustomFields
-                    ? '✅ 已选择角色，请完善角色卡属性后确认提交'
+                    ? (capExceeded
+                        ? '⚠ 属性总和超出上限，请调整后再提交'
+                        : '✅ 已选择角色，请完善角色卡属性后确认提交')
                     : '✅ 已选择角色，等待其他玩家就绪...')
                 : '👆 请点击上方角色卡片进行选择'}
             </p>
@@ -319,7 +353,7 @@ const GamePage: React.FC = () => {
 
   // ---- Main game interface ----
   return (
-    <div className="game-mode flex flex-col h-screen">
+    <div className="game-mode flex flex-col h-screen bg-slate-900 text-slate-200">
       {/* Header */}
       <header className="flex-shrink-0 px-4 py-2 border-b border-slate-700/50 flex items-center justify-between bg-slate-900/90 backdrop-blur z-10">
         <div className="flex items-center gap-3">
@@ -349,61 +383,55 @@ const GamePage: React.FC = () => {
         </div>
       </header>
 
-      {/* Body: 3-column layout (always visible behind modals) */}
+      {/* Body: 2-column layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Character Sheet */}
-        <aside className="w-64 flex-shrink-0 border-r border-slate-700/50">
-          <CharacterSheet />
-        </aside>
-
-        {/* Center: Chat + Scene */}
-        <main className="flex-1 flex flex-col min-w-0">
-          <SceneBackground />
+        {/* Left Sidebar: Character Sheet + Player List + Dice/Vote (30%) */}
+        <aside className="w-[30%] flex-shrink-0 border-r border-slate-700/50 flex flex-col bg-slate-900">
           <div className="flex-1 overflow-hidden">
-            <ChatPanel />
+            <CharacterSheet />
           </div>
-          <ActionInput />
-        </main>
-
-        {/* Right: Room Info (optional) */}
-        <aside className="w-48 flex-shrink-0 border-l border-slate-700/50 p-3 hidden lg:block">
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-xs text-slate-500 font-semibold mb-2">玩家列表</h4>
-              {Object.values(players).map((p: any) => (
-                <div key={p.playerId || p.sid || Math.random()} className="flex items-center gap-2 py-1.5">
-                  <div className={`w-2 h-2 rounded-full ${p.characterId ? 'bg-green-500' : 'bg-slate-600'}`} />
-                  <span className="text-xs text-slate-400">{p.nickname}</span>
-                  {p.characterName && (
-                    <span className="text-xs text-amber-400/60 ml-auto">{p.characterName}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {stage === 'LOBBY' && isCreator && (
+          {/* Lobby controls */}
+          {stage === 'LOBBY' && isCreator && (
+            <div className="flex-shrink-0 px-4 pb-3">
               <Button
                 type="primary"
                 block
                 onClick={handleStartGame}
-                className="!bg-amber-500 !border-amber-500"
+                className="!bg-amber-500 !border-amber-500 !text-white !font-semibold"
                 icon={<ThunderboltOutlined />}
               >
                 开始游戏
               </Button>
-            )}
-
-            <div className="text-xs text-slate-600">
-              <p>模式：{roomInfo?.mode === 'sandbox' ? 'AI 沙盒' :
-                        roomInfo?.mode === 'script' ? '预设剧本' : '导入'}</p>
-              <p>阶段：{stage || 'LOBBY'}</p>
+            </div>
+          )}
+          <div className="flex-shrink-0 px-4 pb-1">
+            <div className="text-xs text-slate-500 pt-2 border-t border-slate-700/50">
+              <span>{roomInfo?.mode === 'sandbox' ? 'AI 沙盒' :
+                        roomInfo?.mode === 'script' ? '预设剧本' : '导入'}</span>
+              <span className="mx-2">·</span>
+              <span>{stage || 'LOBBY'}</span>
             </div>
           </div>
+          {/* Dice & Vote panels at bottom — persist until next one activates */}
+          <div className="flex-shrink-0 border-t border-slate-700/50 p-3 space-y-2">
+            <DiceAnimation />
+            <VotePanel />
+          </div>
         </aside>
+
+        {/* Center: Chat + Scene Background + Action (70%) */}
+        <main className="w-[70%] flex flex-col min-w-0 relative">
+          <SceneBackground />
+          <div className="flex-1 overflow-hidden relative z-[2]">
+            <ChatPanel />
+          </div>
+          <div className="relative z-[2]">
+            <ActionInput />
+          </div>
+        </main>
       </div>
 
       {/* Overlays */}
-      <DiceAnimation />
       <RoundBanner />
       <EndingCard />
       <DMPrivateMessage />

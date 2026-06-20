@@ -20,29 +20,51 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
     - Ending conditions met → route to ending_node
     - Waiting for more input → stay in playing
     """
-    print(f"[playing_node] Entered: _route={state.get('_route', '?')}, "
-          f"chat_history_len={len(state.get('chat_history', []))}, "
-          f"current_round={state.get('current_round', 0)}")
-    
     updates: Dict[str, Any] = {}
 
     current_round = state.get("current_round", 0)
     total_rounds = state.get("total_rounds", 15)
     ending_reached = state.get("ending_reached", False)
+    mode = state.get("mode", "sandbox")
 
-    # Check round limit
-    if current_round >= total_rounds:
+    # ── unified status block: current node & path ──
+    plot_ins = state.get("plot_inspection", {})
+    node_names = plot_ins.get("node_names", {}) if isinstance(plot_ins, dict) else {}
+    label_to_id = plot_ins.get("label_to_id", {}) if isinstance(plot_ins, dict) else {}
+    cn = state.get("current_node", "")
+    cn_name = node_names.get(cn, cn or "起始")
+    nh = state.get("node_history", [])
+    nh_names = [node_names.get(n, n) for n in nh]
+    trail = " → ".join(nh_names) if nh_names else "(无)"
+    _node_switch_attempted: bool = False
+    _node_switch_success: bool = False
+    _node_switch_target: str = ""
+
+    print(f"\n{'─'*55}")
+    print(f"[回合 {current_round}] 🔵 模式: {mode}")
+    print(f"  📍 当前节点: {cn_name}")
+    print(f"  🗺️  已访问路径: {trail}")
+    print(f"{'─'*55}")
+
+    # Check round limit (sandbox mode only; script/import rely on plot end_checkpoints)
+    if mode == "sandbox" and current_round >= total_rounds:
         updates["ending_reached"] = True
         updates["_route"] = "ending"
         return updates
 
-    # Check plot-based ending
+    # Check plot-based ending (deferred: end after next DM response)
     current_node = state.get("current_node", "")
     end_checkpoints = state.get("end_checkpoints", [])
     if current_node and end_checkpoints and current_node in end_checkpoints:
-        updates["ending_reached"] = True
-        updates["_route"] = "ending"
-        return updates
+        if state.get("_end_node_reached"):
+            # Second pass: player sent another message after DM already narrated the ending
+            updates["ending_reached"] = True
+            updates["_route"] = "ending"
+            return updates
+        else:
+            # First time hitting end checkpoint: allow one more DM response cycle
+            updates["_end_node_reached"] = True
+            print(f"[playing_node] ⚠️ 结局节点 [{cn_name}] 已到达，下一轮对话后结束游戏")
 
     # Check ending data from DM
     if state.get("ending_data"):
@@ -73,22 +95,21 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
             if target_node_id:
                 from game.utils.script_loader import validate_node_transition
                 plot_graph = state.get("plot_graph", {"nodes": [], "edges": []})
-                plot_inspection = state.get("plot_inspection", {})
                 current_node = state.get("current_node", "")
-                node_names = plot_inspection.get("node_names", {})
-                label_to_id = plot_inspection.get("label_to_id", {})
 
                 # ⚠️ 容错：DM 可能返回 label 而非 UUID，统一解析
                 if target_node_id not in node_names and target_node_id in label_to_id:
                     resolved = label_to_id[target_node_id]
-                    print(f"[plot节点推进] 🔧 label→UUID: [{target_node_id}] → [{resolved}]")
+                    print(f"  🔧 label→UUID: [{target_node_id}] → [{resolved}]")
                     target_node_id = resolved
-                # 同时确保 current_node 是 UUID
                 if current_node and current_node not in node_names and current_node in label_to_id:
                     current_node = label_to_id[current_node]
 
+                _node_switch_attempted = True
+                _node_switch_target = node_names.get(target_node_id, target_node_id)
+
                 if validate_node_transition(current_node, target_node_id,
-                                            plot_graph, plot_inspection):
+                                            plot_graph, plot_ins):
                     old_name = node_names.get(current_node, current_node or "起始")
                     new_name = node_names.get(target_node_id, target_node_id)
                     node_history = list(state.get("node_history", []))
@@ -96,16 +117,14 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
                     updates["current_node"] = target_node_id
                     updates["node_history"] = node_history
                     has_node_update = True
-                    print(f"\n{'='*60}")
-                    print(f"[plot节点推进] 🎬 剧情推进！")
-                    print(f"  从节点: [{current_node}] {old_name}")
-                    print(f"  到节点: [{target_node_id}] {new_name}")
-                    print(f"  已访问路径: {' → '.join(node_history)}")
-                    print(f"{'='*60}\n")
+                    _node_switch_success = True
+                    nh_after = [node_names.get(n, n) for n in node_history]
+                    print(f"  🔄 节点切换: ✅ 成功")
+                    print(f"     {old_name}  →  {new_name}")
+                    print(f"  🗺️  新路径: {' → '.join(nh_after)}")
                 else:
-                    print(f"\n[plot节点推进] ⚠️ 非法节点切换被拒绝: "
-                          f"[{current_node}] → [{target_node_id}]，"
-                          f"target不在有效下一节点列表中\n")
+                    print(f"  🔄 节点切换: ❌ 失败")
+                    print(f"     目标 [{_node_switch_target}] 不在当前节点的有效下一节点列表中")
         else:
             if action_type in ("roll_dice", "festival_check"):
                 updates["pending_check"] = params
@@ -120,26 +139,19 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
                 print(f"[playing_node] Routing to vote for action: {action_type}")
                 return updates
 
-    # Clear dm_actions after processing (keep node_update visible for log)
+    # ── node switch summary ──
+    if not _node_switch_attempted:
+        print(f"  🔄 节点切换: 未尝试 (DM 未请求 update_node)")
+
+    # Clear dm_actions after processing
     if dm_actions and not updates.get("_route"):
         updates["dm_actions"] = []
-        if not has_node_update:
-            print(f"[playing_node] Cleared stale dm_actions: {dm_actions}")
 
     # Check if we need DM response (new messages)
     chat = state.get("chat_history", [])
     if chat and len(chat) > 0:
         last_msg = chat[-1] if isinstance(chat[-1], dict) else {"role": "unknown"}
-        print(f"[playing_node] Last chat message: role={last_msg.get('role', '?')}, "
-              f"sender={last_msg.get('sender', '?')}, "
-              f"content={(last_msg.get('content', '') or '')[:60]}, "
-              f"chat_len={len(chat)}")
-        # If last message is from a player, route to DM
         if last_msg.get("role") == "player":
-            print(f"[playing_node] New player message detected: "
-                  f"role={last_msg.get('role')}, sender={last_msg.get('sender')}, "
-                  f"content={last_msg.get('content', '')[:50]}, "
-                  f"chat_len={len(chat)}")
             updates["_route"] = "dm_turn"
             return updates
     else:

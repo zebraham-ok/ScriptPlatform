@@ -24,38 +24,19 @@ def roll_dice(count: int, sides: int) -> list:
 
 def roll_check(attr_value: int, difficulty: int) -> Dict[str, Any]:
     """
-    Perform a standard d20 attribute check.
-    - Roll a d20
-    - Add attribute modifier: (attr_value - 10) // 2
-    - Compare to difficulty
+    Perform an attribute check.
+    - Roll randint(0, attr_value)
+    - Success if roll >= difficulty
     Returns detailed result.
     """
-    roll = roll_d20()
-    modifier = (attr_value - 10) // 2
-    total = roll + modifier
-
-    # Critical success (natural 20) or critical failure (natural 1)
-    is_critical_success = roll == 20
-    is_critical_failure = roll == 1
-
-    if is_critical_success:
-        success = True
-        result_desc = "大成功！"
-    elif is_critical_failure:
-        success = False
-        result_desc = "大失败..."
-    else:
-        success = total >= difficulty
-        result_desc = "成功！" if success else "失败..."
+    roll = random.randint(0, attr_value)
+    success = roll >= difficulty
+    result_desc = "成功！" if success else "失败..."
 
     return {
         "roll": roll,
-        "modifier": modifier,
-        "total": total,
         "difficulty": difficulty,
         "success": success,
-        "critical_success": is_critical_success,
-        "critical_failure": is_critical_failure,
         "description": result_desc,
     }
 

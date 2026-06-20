@@ -10,20 +10,26 @@ const DiceAnimation: React.FC = () => {
   const lastResult = diceResults[diceResults.length - 1];
 
   return (
-    <div className="dice-container">
-      <div className="text-center">
-        <div className="text-6xl mb-4 dice-result">
-          {lastResult.result === 'success' ? '🎉' : '💥'}
+    <div className="bg-slate-800/80 border border-amber-500/20 rounded-lg p-3 animate-dice-appear">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs text-amber-400/70 font-semibold uppercase tracking-wider">🎲 检定结果</span>
+        <span className="text-xs text-slate-500">{lastResult.playerName}</span>
+      </div>
+      {lastResult.description && (
+        <div className="text-xs text-slate-400 mb-2 leading-relaxed">{lastResult.description}</div>
+      )}
+      <div className="flex items-center gap-4">
+        <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+          <span className="text-2xl font-bold text-amber-400">{lastResult.dice}</span>
         </div>
-        <div className="dice-result text-5xl">{lastResult.dice}</div>
-        <div className="mt-3 text-lg text-amber-400/80 font-semibold">
-          {lastResult.target}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-slate-300 font-semibold truncate">{lastResult.target}</div>
+          <div className="text-xs text-slate-500 mt-0.5">
+            难度 {lastResult.difficulty}
+          </div>
         </div>
-        <div className="mt-1 text-sm text-slate-400">
-          难度 {lastResult.difficulty} · {lastResult.result === 'success' ? '成功！' : '失败...'}
-        </div>
-        <div className="mt-1 text-xs text-slate-500">
-          {lastResult.playerName} 掷骰
+        <div className={`flex-shrink-0 text-xs font-bold px-2 py-1 rounded ${lastResult.result === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+          {lastResult.result === 'success' ? '✓ 成功' : '✗ 失败'}
         </div>
       </div>
     </div>

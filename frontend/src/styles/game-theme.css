@@ -54,18 +54,20 @@
   @apply text-white font-mono;
 }
 
-/* --- 场景背景 --- */
+/* --- 场景背景（全屏底层） --- */
 .scene-background {
-  @apply relative overflow-hidden rounded-lg;
+  /* 全屏背景的 CSS 渐变备选（当无图片时） */
   background-size: cover;
   background-position: center;
 }
 
 .scene-description {
-  @apply absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4;
+  @apply inline-block bg-gradient-to-br from-black/70 via-black/50 to-transparent rounded-lg p-3;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-/* --- 骰子动效容器 --- */
+/* --- 骰子动效容器（全屏覆盖，保留向后兼容） --- */
 .dice-container {
   @apply fixed inset-0 z-50 flex items-center justify-center pointer-events-none;
 }
@@ -74,6 +76,16 @@
   @apply text-6xl font-bold text-amber-400;
   text-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
   animation: diceRoll 0.6s ease-out;
+}
+
+/* --- 内联骰子面板（右侧栏内） --- */
+.dice-panel {
+  @apply bg-slate-800/80 border border-amber-500/20 rounded-lg p-3;
+}
+
+/* --- 内联投票面板（右侧栏内） --- */
+.vote-panel {
+  @apply bg-slate-800/80 border border-purple-500/20 rounded-lg p-3;
 }
 
 /* --- 回合切换横幅 --- */
@@ -108,8 +120,45 @@
 }
 
 .dm-option-btn {
-  @apply px-3 py-1.5 text-sm rounded-full border border-slate-600 text-slate-300
-         hover:border-amber-500 hover:text-amber-400 transition-colors cursor-pointer;
+  @apply px-3 py-1.5 text-sm rounded-full border border-amber-500/40 text-amber-300
+         bg-amber-500/5 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-200
+         transition-colors cursor-pointer;
+}
+
+/* DM 选项按钮栏样式（聊天框上方，参考 BUMENGweb-main） */
+.dm-option-btn-bar {
+  @apply px-4 py-2 text-sm rounded-xl border border-amber-600/30
+         bg-black/30 backdrop-blur-md text-amber-200/85
+         hover:bg-amber-900/30 hover:border-amber-500/50 hover:text-amber-100
+         transition-all duration-200 cursor-pointer text-left;
+}
+
+/* 选项按钮滑入动画（参考 BUMENGweb-main） */
+@keyframes optionSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 骰子/投票面板出现动画 */
+@keyframes diceAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-dice-appear {
+  animation: diceAppear 0.3s ease-out;
 }
 
 /* --- 脉冲光环（DM 思考中） --- */
@@ -126,18 +175,82 @@
 .game-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
-
-.game-scrollbar::-webkit-scrollbar-track {
-  background: #1e293b;
-}
-
 .game-scrollbar::-webkit-scrollbar-thumb {
   background: #475569;
   border-radius: 3px;
 }
-
 .game-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #64748b;
+}
+
+/* ========================================
+   暗色主题 — antd Modal / Button 覆盖
+   ======================================== */
+.role-select-modal .ant-modal-content {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+}
+
+.role-select-modal .ant-modal-header {
+  background: #0f172a !important;
+}
+
+.game-mode .ant-modal-content {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+}
+
+.game-mode .ant-modal-header {
+  background: #1e293b !important;
+}
+
+.game-mode .ant-modal-title {
+  color: #e2e8f0 !important;
+}
+
+.game-mode .ant-modal-close {
+  color: #94a3b8 !important;
+}
+
+.game-mode .ant-modal-close:hover {
+  color: #e2e8f0 !important;
+}
+
+/* Ensure antd buttons in game mode have light text */
+.game-mode .ant-btn:not(.ant-btn-primary) {
+  color: #e2e8f0 !important;
+  border-color: #475569 !important;
+}
+
+.game-mode .ant-btn-primary {
+  background: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: #fff !important;
+}
+
+.game-mode .ant-btn-primary:hover {
+  background: #d97706 !important;
+  border-color: #d97706 !important;
+  color: #fff !important;
+}
+
+.game-mode .ant-input {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+  color: #e2e8f0 !important;
+}
+
+.game-mode .ant-input::placeholder {
+  color: #64748b !important;
+}
+
+.game-mode .ant-spin-dot-item {
+  background-color: #f59e0b !important;
+}
+
+.game-mode .ant-spin-text {
+  color: #94a3b8 !important;
 }
 
 /* --- 玩家状态指示 --- */

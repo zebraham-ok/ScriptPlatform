@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import type {
   GameRoomInfo, PlayerInfo, ChatMessage, SceneInfo,
-  DiceResult, EndingData, TurnInfo, GameStage, RoleDetail,
+  DiceResult, PendingVote, EndingData, TurnInfo, GameStage, RoleDetail,
 } from '../types';
 import {
   connectSocket, disconnectSocket, getSocket,
@@ -46,6 +46,10 @@ interface GameStore {
   diceResults: DiceResult[];
   showDice: boolean;
 
+  // ---- Vote ----
+  pendingVote: PendingVote | null;
+  submitVote: (option: string) => void;
+
   // ---- Ending ----
   ending: EndingData | null;
 
@@ -78,6 +82,7 @@ interface GameStore {
   // Gameplay
   sendMessage: (content: string) => void;
   selectDMOption: (optionIndex: number) => void;
+  selectDMOptionByText: (optionText: string) => void;
   skipTurn: () => void;
   extendTurn: () => void;
 
@@ -92,6 +97,7 @@ interface GameStore {
   _setDMThinking: (thinking: boolean) => void;
   _setScene: (scene: SceneInfo | null) => void;
   _addDiceResult: (result: DiceResult) => void;
+  _setPendingVote: (vote: PendingVote | null) => void;
   _setEnding: (ending: EndingData | null) => void;
   _setLoading: (loading: boolean) => void;
   _setError: (error: string | null) => void;
@@ -119,6 +125,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   scene: null,
   diceResults: [],
   showDice: false,
+  pendingVote: null,
+  submitVote: () => {},
   ending: null,
   loading: false,
   error: null,
@@ -260,9 +268,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   selectDMOption: (optionIndex) => {
+    const { roomInfo, dmOptions } = get();
+    if (!roomInfo) return;
+    const text = dmOptions[optionIndex];
+    if (text) {
+      emitDMOptionSelect(roomInfo.roomId, text);
+    }
+  },
+
+  selectDMOptionByText: (optionText) => {
     const { roomInfo } = get();
     if (!roomInfo) return;
-    emitDMOptionSelect(roomInfo.roomId, optionIndex);
+    emitDMOptionSelect(roomInfo.roomId, optionText);
   },
 
   skipTurn: () => {
@@ -288,6 +305,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   _setDMThinking: (thinking) => set({ dmThinking: thinking }),
   _setScene: (scene) => set({ scene }),
   _addDiceResult: (result) => set((s) => ({ diceResults: [...s.diceResults, result], showDice: true })),
+  _setPendingVote: (vote: PendingVote | null) => set({ pendingVote: vote }),
   _setEnding: (ending) => set({ ending }),
   _setLoading: (loading) => set({ loading }),
   _setError: (error) => set({ error }),
@@ -309,6 +327,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       scene: null,
       diceResults: [],
       showDice: false,
+      pendingVote: null,
       ending: null,
       loading: false,
       error: null,
@@ -383,11 +402,16 @@ function _bindSocketEvents(
     socket.on('room_state', (data: any) => {
       console.log('[Socket] room_state:', data);
       set((s: GameStore) => {
-        // Build players map from array
+        // Build players map from array, keyed by both sid and playerId
         const playersMap: Record<string, any> = {};
         if (Array.isArray(data.players)) {
           for (const p of data.players) {
-            playersMap[p.sid || p.playerId] = p;
+            const key = p.sid || p.playerId;
+            playersMap[key] = p;
+            // Also index by playerId for frontend lookup
+            if (p.playerId && p.playerId !== key) {
+              playersMap[p.playerId] = { ...p, _sid: key };
+            }
           }
         }
         // Build assignedRoles from data.roles (backend sends roles array, not assignedRoles dict)
@@ -535,33 +559,88 @@ function _bindSocketEvents(
       }
     });
 
+    // Merged dm_status handler: handles both thinking flag and status messages
     socket.on('dm_status', (data: any) => {
-      set((s: GameStore) => ({ ...s, dmThinking: data.thinking || false }));
+      const thinking = data.thinking;
+      if (typeof thinking === 'boolean') {
+        set((s: GameStore) => ({ ...s, dmThinking: thinking }));
+      }
+      // If there's a status text, also add as system message
+      if (data.status) {
+        const msg: ChatMessage = {
+          id: `dmstatus_${Date.now()}`,
+          senderId: 'system',
+          senderName: '系统',
+          content: data.status,
+          type: 'system',
+          timestamp: Date.now(),
+        };
+        set((s: GameStore) => ({ ...s, messages: _addMessage(s.messages, msg) }));
+      }
     });
 
     socket.on('dice_roll', (data: any) => {
-      const result: DiceResult = {
-        id: `dice_${Date.now()}`,
-        playerName: data.playerName || '未知',
-        target: data.target || '',
-        dice: data.dice || 0,
-        difficulty: data.difficulty || 0,
-        result: data.result || 'failure',
-        timestamp: Date.now(),
-      };
-      set((s: GameStore) => ({ ...s, diceResults: [...s.diceResults, result], showDice: true }));
-      // Auto-hide dice after 3s
-      setTimeout(() => set((s: GameStore) => ({ ...s, showDice: false })), 3000);
+      const inner = data.result || data;
+      // Check if it's a vote result (has options field)
+      if (inner.options) {
+        const pendingVote: PendingVote = {
+          name: inner.name || '投票',
+          options: inner.options || [],
+          results: inner.results || {},
+          winner: inner.winner,
+          complete: inner.complete,
+        };
+        set((s: GameStore) => ({ ...s, pendingVote }));
+        // persist until next vote/dice result replaces it
+      } else {
+        // Dice check result — DM will now process this, show thinking
+        const result: DiceResult = {
+          id: `dice_${Date.now()}`,
+          playerName: inner.playerName || data.playerName || '未知',
+          target: inner.checkTarget || inner.target || '',
+          description: inner.description || '',
+          dice: inner.diceRoll || inner.total || inner.dice || 0,
+          difficulty: inner.difficulty || 0,
+          result: inner.success ? 'success' : 'failure',
+          timestamp: Date.now(),
+        };
+        set((s: GameStore) => ({
+          ...s,
+          diceResults: [...s.diceResults, result],
+          showDice: true,
+          dmThinking: true,  // DM will now narrate the check result
+        }));
+        // persist until next dice/vote result replaces it
+      }
     });
 
     socket.on('character_update', (data: any) => {
+      // Find the player key in the map that matches this character
+      const playerKey = data.playerId || data.playerSid || '';
+      let targetKey = playerKey;
+      // If direct playerId lookup fails, search by characterId
+      if (playerKey && !(playerKey in get().players)) {
+        targetKey = '';
+      }
+      if (!targetKey && data.characterId) {
+        for (const [key, p] of Object.entries(get().players as Record<string, any>)) {
+          if (p.characterId === data.characterId) {
+            targetKey = key;
+            break;
+          }
+        }
+      }
+      if (!targetKey) return;
       set((s: GameStore) => ({
         ...s,
         players: {
           ...s.players,
-          [data.playerId]: {
-            ...s.players[data.playerId],
-            ...data,
+          [targetKey]: {
+            ...s.players[targetKey],
+            characterId: data.characterId || s.players[targetKey]?.characterId,
+            characterName: data.characterName || s.players[targetKey]?.characterName,
+            attributes: data.attributes || s.players[targetKey]?.attributes || {},
+            inventory: data.inventory || s.players[targetKey]?.inventory || [],
           },
         },
       }));
@@ -578,18 +657,6 @@ function _bindSocketEvents(
         },
         stage: 'ENDING',
       }));
-    });
-
-    socket.on('dm_status', (data: any) => {
-      const msg: ChatMessage = {
-        id: `dmstatus_${Date.now()}`,
-        senderId: 'system',
-        senderName: '系统',
-        content: data.status || '主持人正在处理...',
-        type: 'system',
-        timestamp: Date.now(),
-      };
-      set((s: GameStore) => ({ ...s, messages: _addMessage(s.messages, msg) }));
     });
 
     socket.on('join_error', (data: any) => {

@@ -126,9 +126,19 @@ def _build_system_prompt(state: GameState) -> str:
 1. 根据剧本设定和玩家行动推进剧情
 2. 描述场景、NPC对话、环境变化
 3. 在合适的时机触发检定（用 ##ACTIONS## 标记）
+   ⚠️ 如果上下文中有「⚡ 当前节点绑定检定」，必须在本节点触发该检定！
 4. 保持剧情连贯和有趣
 5. 回应时使用生动的中文描述
 6. ⚠️ 当剧情推进到新的情节节点时，必须在 ##ACTIONS## 中声明 update_node
+7. 检定时务必使用上下文中给定的检定属性名和难度值，不要自己编造
+8. 检定成功后按上下文中给定的"成功→"效果推进；失败后按"失败→"效果推进
+
+⚙️ 检定机制说明（你只需要触发检定，系统会自动执行掷骰）：
+  - 系统从 0 ~ 检定属性值 之间随机取一个整数
+  - 若该随机数 >= 难度，则成功；否则失败
+  - 例：力量=14、难度=10 → 系统取 randint(0,14)，若结果≥10 则成功（概率约 36%）
+  - 例：洞察值=3、难度=3  → 系统取 randint(0,3)，若结果≥3 则成功（概率 25%）
+  - 因此：难度越接近属性值上限，成功率越低；难度超过属性值则不可能成功
 
 输出格式：
 ##NARRATION##
@@ -148,6 +158,8 @@ def _build_system_prompt(state: GameState) -> str:
   例如下一条是 "节点3｜这大叔好像我爸年轻版"，则 nodeId 填写 "节点3｜这大叔好像我爸年轻版"
   （直接从上文复制粘贴，一字不差，不要自己编造）
 - 每次最多推进一个节点
+- ⚠️ 选项标注规则：如果某个选项在你计划中会触发检定（roll_dice），请在该选项末尾标注「（需检定）」，
+  例如：\"- 用力推开石门「（需检定）」\"。纯对话或观察类选项则不需标注。
 """
 
     plot_notes = ""
@@ -168,21 +180,26 @@ def _build_system_prompt(state: GameState) -> str:
 
 
 def _parse_dm_response(raw: str) -> dict:
-    """Parse DM AI response into structured components."""
+    """Parse DM AI response into structured components.
+    Handles multiple format variations from different AI models."""
     result = {
-        "narration": raw,
+        "narration": "",
         "actions": [],
         "options": [],
         "private_messages": {},
     }
 
-    # Extract ##NARRATION## block
-    narr_match = re.search(r'##NARRATION##\s*([\s\S]*?)(?=##ACTIONS##|##OPTIONS##|##PRIVATE##|$)', raw)
+    # Extract ##NARRATION## block (case-insensitive for robustness)
+    narr_match = re.search(r'##NARRATION##\s*([\s\S]*?)(?=##ACTIONS##|##OPTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
     if narr_match:
         result["narration"] = narr_match.group(1).strip()
+    else:
+        # AI may have skipped the narration header — use everything before first known section
+        stripped = _strip_section_headers(raw)
+        result["narration"] = stripped.strip()
 
     # Extract ##ACTIONS## block
-    actions_match = re.search(r'##ACTIONS##\s*([\s\S]*?)(?=##NARRATION##|##OPTIONS##|##PRIVATE##|$)', raw)
+    actions_match = re.search(r'##ACTIONS##\s*([\s\S]*?)(?=##NARRATION##|##OPTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
     if actions_match:
         try:
             actions_text = actions_match.group(1).strip()
@@ -190,16 +207,16 @@ def _parse_dm_response(raw: str) -> dict:
         except json.JSONDecodeError:
             result["actions"] = []
 
-    # Extract ##OPTIONS## block
-    options_match = re.search(r'##OPTIONS##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##PRIVATE##|$)', raw)
+    # Extract ##OPTIONS## block — handle bullet (-), numbered (1.), and mixed formats
+    options_match = re.search(r'##OPTIONS##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
     if options_match:
         opts_text = options_match.group(1).strip()
         result["options"] = [
-            o.strip().lstrip("- ") for o in opts_text.split("\n") if o.strip()
+            _clean_option(o) for o in opts_text.split("\n") if o.strip()
         ]
 
     # Extract ##PRIVATE## block
-    priv_match = re.search(r'##PRIVATE##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##OPTIONS##|$)', raw)
+    priv_match = re.search(r'##PRIVATE##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##OPTIONS##|$)', raw, re.IGNORECASE)
     if priv_match:
         try:
             result["private_messages"] = json.loads(priv_match.group(1).strip())
@@ -207,6 +224,26 @@ def _parse_dm_response(raw: str) -> dict:
             pass
 
     return result
+
+
+def _strip_section_headers(text: str) -> str:
+    """Remove any remaining ##SECTION## headers and content blocks from text."""
+    return re.sub(
+        r'##(?:ACTIONS|OPTIONS|PRIVATE)##\s*[\s\S]*?(?=##|$)',
+        '',
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def _clean_option(opt_text: str) -> str:
+    """Clean an option line: strip bullet markers and numbering."""
+    cleaned = opt_text.strip()
+    # Remove leading bullet markers: "- ", "• ", "* ", "▸ "
+    cleaned = re.sub(r'^[•\*▸\-•]\s*', '', cleaned)
+    # Remove leading numbering: "1. ", "1) ", "1、"
+    cleaned = re.sub(r'^\d+[\.\)、]\s*', '', cleaned)
+    return cleaned
 
 
 def _get_fallback_response(state: GameState) -> str:
