@@ -567,7 +567,15 @@ async def submit_character_sheet(sid: str, data: dict):
         return
 
     character_id = data.get("characterId", "")
-    attributes = data.get("attributes", {})
+    raw_attributes = data.get("attributes", {})
+
+    # ⚠️ Strip "worldParams." / "WorldParams." prefix so attribute keys
+    #    match the format used in character_attributes and script_loader.
+    WPP = "worldParams."
+    attributes = {}
+    for k, v in raw_attributes.items():
+        clean_key = k[len(WPP):] if k.lower().startswith(WPP.lower()) else k
+        attributes[clean_key] = v
 
     player_info = room["players"].get(sid, {})
     if sid in room["players"]:

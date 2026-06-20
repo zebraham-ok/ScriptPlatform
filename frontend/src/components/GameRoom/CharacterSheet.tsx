@@ -1,6 +1,13 @@
 import React from 'react';
 import { useGameStore } from '../../store/useGameStore';
 
+/** Strip "worldParams." / "WorldParams." prefix for display */
+const cleanAttrKey = (key: string): string => {
+  const lowerKey = key.toLowerCase();
+  if (lowerKey.startsWith('worldparams.')) return key.substring('worldparams.'.length);
+  return key;
+};
+
 const CharacterSheet: React.FC = () => {
   const players = useGameStore((s) => s.players);
   const playerId = useGameStore((s) => s.playerId);
@@ -51,7 +58,7 @@ const CharacterSheet: React.FC = () => {
                   <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">属性</div>
                   {Object.entries(currentPlayer.attributes).map(([key, value]) => (
                     <div key={key} className="flex justify-between items-center">
-                      <span className="text-slate-300 text-sm">{key}</span>
+                      <span className="text-slate-300 text-sm">{cleanAttrKey(key)}</span>
                       <span className="text-white font-mono">{String(value)}</span>
                     </div>
                   ))}
@@ -100,7 +107,7 @@ const CharacterSheet: React.FC = () => {
                     <div className="space-y-1.5 mt-2">
                       {Object.entries(p.attributes).map(([key, value]) => (
                         <div key={key} className="flex justify-between items-center text-xs">
-                          <span className="text-slate-400">{key}</span>
+                          <span className="text-slate-400">{cleanAttrKey(key)}</span>
                           <span className="text-slate-300 font-mono">{String(value)}</span>
                         </div>
                       ))}
