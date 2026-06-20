@@ -1,26 +1,62 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import type { ChatMessage } from '../../types';
+import TypewriterText from './TypewriterText';
 
 const ChatPanel: React.FC = () => {
   const messages = useGameStore((s) => s.messages);
   const dmThinking = useGameStore((s) => s.dmThinking);
   const playerId = useGameStore((s) => s.playerId);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 跟踪每个消息ID的打字完成状态
+  const [completedMessages, setCompletedMessages] = useState<Set<string>>(new Set());
 
+  // Identify the latest DM message for typewriter effect
+  const lastDMIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.type === 'dm' || m.type === 'dm_narration' || m.type === 'narration') {
+        return i;
+      }
+    }
+    return -1;
+  })();
+
+  const handleTypingComplete = useCallback((msgId: string) => {
+    setCompletedMessages(prev => new Set([...prev, msgId]));
+  }, []);
+
+  // Auto-scroll during typing and on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, dmThinking]);
 
-  const renderMessage = (msg: ChatMessage) => {
+  // 检查是否有任何消息正在打字
+  const hasActiveTyping = lastDMIndex >= 0 && !completedMessages.has(messages[lastDMIndex]?.id);
+  
+  // Also auto-scroll during typing (more frequent)
+  useEffect(() => {
+    if (hasActiveTyping) {
+      const interval = setInterval(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [hasActiveTyping, lastDMIndex]);
+
+  const renderMessage = (msg: ChatMessage, idx: number) => {
     const isOwn = msg.senderId === playerId;
     const isDM = msg.type === 'dm' || msg.type === 'dm_narration';
     const isSystem = msg.type === 'system';
     const isNarration = msg.type === 'narration';
     const isPrivate = msg.type === 'private';
     const isDice = msg.type === 'dice';
+    // 只有最新的DM消息，并且还没完成打字，才使用打字机效果
+    const isLatestDM = idx === lastDMIndex && !completedMessages.has(msg.id);
 
     if (isSystem) {
       return (
@@ -37,7 +73,15 @@ const ChatPanel: React.FC = () => {
         <div key={msg.id} className="dm-message">
           <div className="dm-label">📖 剧情叙述</div>
           <div className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-            {msg.content}
+            {isLatestDM ? (
+              <TypewriterText
+                text={msg.content}
+                speed={25}
+                onComplete={() => handleTypingComplete(msg.id)}
+              />
+            ) : (
+              msg.content
+            )}
           </div>
         </div>
       );
@@ -74,20 +118,42 @@ const ChatPanel: React.FC = () => {
         <div key={msg.id} className="dm-message">
           <div className="dm-label">🎭 {msg.senderName}</div>
           <div className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-            {msg.content}
+            {isLatestDM ? (
+              <TypewriterText
+                text={msg.content}
+                speed={25}
+                onComplete={() => handleTypingComplete(msg.id)}
+              />
+            ) : (
+              msg.content
+            )}
           </div>
           {msg.narration && (
             <div className="mt-2 text-sm text-slate-400 italic border-t border-slate-700 pt-2">
               📖 {msg.narration}
             </div>
           )}
-          {msg.dmOptions && msg.dmOptions.length > 0 && !useGameStore.getState().dmThinking && (
-            <div className="mt-3 flex flex-wrap gap-2">
+          {msg.dmOptions && msg.dmOptions.length > 0 && (isLatestDM ? completedMessages.has(msg.id) : true) && !useGameStore.getState().dmThinking && (
+            <div className="mt-3 flex flex-wrap gap-2 animate-fade-slide-up">
               {msg.dmOptions.map((opt: string, i: number) => (
                 <button
                   key={i}
                   className="px-3 py-1.5 text-sm rounded-full border border-amber-500/40 text-amber-300 bg-amber-500/5 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-200 transition-colors cursor-pointer"
-                  onClick={() => useGameStore.getState().selectDMOptionByText(opt)}
+                  onClick={() => {
+                    // 先清空消息内的选项，防止重新显示
+                    const store = useGameStore.getState();
+                    // 创建新的messages数组，找到当前消息并清空它的dmOptions
+                    const newMessages = store.messages.map(m => {
+                      if (m.id === msg.id) {
+                        return { ...m, dmOptions: undefined };
+                      }
+                      return m;
+                    });
+                    // 使用Zustand正确的set方法更新store
+                    useGameStore.setState({ messages: newMessages, dmOptions: [] });
+                    // 然后发送选项选择
+                    store.selectDMOptionByText(opt);
+                  }}
                 >
                   {opt}
                 </button>
@@ -137,7 +203,7 @@ const ChatPanel: React.FC = () => {
             <p className="text-xs mt-1">DM 将在这里叙述剧情</p>
           </div>
         )}
-        {messages.map(renderMessage)}
+        {messages.map((msg, idx) => renderMessage(msg, idx))}
 
         {/* DM thinking indicator */}
         {dmThinking && (

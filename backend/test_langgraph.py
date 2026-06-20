@@ -56,7 +56,11 @@ def build_mock_state(mode="script") -> dict:
         "scene_image": None,
         "inventory": [],
         "chat_history": [],
-        "long_term_memory": {},
+        "long_term_memory": {
+            "player_memory": {},
+            "npc_memory": {},
+            "global_note": "",
+        },
         "plot_inspection": {},
         "turn_number": 1,
         "turn_timeout_seconds": 120,

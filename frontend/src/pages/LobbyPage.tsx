@@ -4,6 +4,7 @@ import { ThunderboltOutlined, BookOutlined, UploadOutlined } from '@ant-design/i
 import { useProjectStore } from '../store/useProjectStore';
 import { useGameStore } from '../store/useGameStore';
 import { createGameRoom, importRoom } from '../api';
+import ParticleBackground from '../components/Effects/ParticleBackground';
 
 const MODE_OPTIONS = [
   {
@@ -123,9 +124,10 @@ const LobbyPage: React.FC = () => {
   };
 
   return (
-    <div className="game-mode flex flex-col">
+    <div className="game-mode flex flex-col relative">
+      <ParticleBackground />
       {/* Header */}
-      <header className="flex-shrink-0 px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+      <header className="relative z-10 flex-shrink-0 px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
             onClick={() => setCurrentPage('plaza')}
@@ -140,7 +142,7 @@ const LobbyPage: React.FC = () => {
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 game-scrollbar">
+      <div className="relative z-10 flex-1 overflow-y-auto p-6 game-scrollbar">
         <div className="max-w-2xl mx-auto">
           {/* Mode selection */}
           {!mode ? (

@@ -4,6 +4,7 @@ Migrated from BUMENGweb-main web_server.py, engine.py, manager.py.
 """
 
 import os
+import re
 import json
 import uuid
 import asyncio
@@ -83,7 +84,11 @@ def _build_initial_state(room: dict) -> dict:
         "scene_image": None,
         "inventory": [],
         "chat_history": [],
-        "long_term_memory": {},
+        "long_term_memory": {
+            "player_memory": {},
+            "npc_memory": {},
+            "global_note": "",
+        },
         "plot_inspection": {},
         "turn_number": 1,
         "turn_timeout_seconds": 120,
@@ -554,6 +559,9 @@ async def _transition_role_select_to_playing(room_id: str):
             characters_data=state.get("characters_data", [])
         ))
 
+    # Initialize long-term memory from script data (background, non-blocking)
+    asyncio.create_task(_init_long_term_memory_async(room_id, room))
+
     await _broadcast_room_state(room_id)
     print(f"[GameServer] ⚔️  ROLE_SELECT → PLAYING transition complete: {room_id}")
 
@@ -831,7 +839,12 @@ async def start_game(sid: str, data: dict):
                 characters_data=new_state.get("characters_data", [])
             ))
 
-    room["state"] = new_state
+        # Initialize long-term memory from script data (background, non-blocking)
+        room["state"] = new_state  # update first so init reads correct state
+        asyncio.create_task(_init_long_term_memory_async(room_id, room))
+
+    if room["stage"] != "PLAYING":
+        room["state"] = new_state  # for ROLE_SELECT path
     await _broadcast_room_state(room_id)
 
     print(f"[GameServer] Game started in room {room_id}, stage={room['stage']}, "
@@ -925,6 +938,9 @@ async def send_message(sid: str, data: dict):
 
     # Clear thinking flag after all results are emitted
     await sio.emit("dm_status", {"thinking": False}, room=room_id)
+
+    # Fire-and-forget: update long-term memory in background
+    asyncio.create_task(_update_long_term_memory_async(room_id, room))
 
 
 async def _process_graph_results(room_id: str, room: dict, new_state: dict):
@@ -1124,21 +1140,29 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
                 characters_data=room_state.get("characters_data", [])
             ))
 
-    # Character state updates
+    # Character state updates — sync inventory from state to room players
     char_attrs = new_state.get("character_attributes", {})
-    if char_attrs:
+    players_state = new_state.get("players", {})
+    if char_attrs or players_state:
         # Resolve characterId→player_sid mapping from assignedRoles
         assigned_roles = room.get("assignedRoles", {})
         char_to_player = {cid: psid for cid, psid in assigned_roles.items()}
         for cid, attrs in char_attrs.items():
             player_sid = char_to_player.get(cid, "")
             player_info = room["players"].get(player_sid, {}) if player_sid else {}
+            # Get updated inventory from state (may have been modified by addItem/lossItem)
+            state_player = players_state.get(player_sid, {})
+            state_inventory = state_player.get("inventory", None)
+            inventory = state_inventory if state_inventory is not None else player_info.get("inventory", [])
+            # Sync room players inventory
+            if state_inventory is not None and player_sid:
+                room["players"][player_sid]["inventory"] = state_inventory
             await sio.emit("character_update", {
                 "playerId": player_info.get("playerId", player_sid),
                 "characterId": cid,
                 "characterName": player_info.get("characterName", ""),
                 "attributes": attrs,
-                "inventory": player_info.get("inventory", []),
+                "inventory": inventory,
             }, room=room_id)
 
     # Ending
@@ -1165,6 +1189,293 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
     room["state"]["players_acted_this_turn"] = set()
     room["state"]["players_skipped_this_turn"] = set()
     room["state"]["turn_started_at"] = datetime.now().timestamp()
+
+
+# ============================================================
+#  Long-Term Memory — AI init at game start + async update each round
+# ============================================================
+
+async def _init_long_term_memory_async(room_id: str, room: dict):
+    """
+    Fire-and-forget: initialize long_term_memory from script data at game start.
+    Focuses on what each character/NPC knows and doesn't know.
+    """
+    try:
+        state = room.get("state", {})
+        script_title = state.get("script_title", "未命名剧本")
+
+        # ── Gather script data ──
+        characters_data = state.get("characters_data", [])
+        world_setting = state.get("world_setting", [])
+        plot_graph = state.get("plot_graph", {})
+        assigned_roles = state.get("assigned_roles", {})
+        players = state.get("players", {})
+
+        # Build player-role mapping
+        player_char_names = []
+        for cid, psid in assigned_roles.items():
+            for c in characters_data:
+                if isinstance(c, dict) and c.get("id") == cid:
+                    pname = c.get("name", cid)
+                    pnick = players.get(psid, {}).get("nickname", "") if psid else ""
+                    player_char_names.append(f"{pname}" + (f"（玩家：{pnick}）" if pnick else "（玩家）"))
+                    break
+
+        # Separate player characters from NPCs
+        player_cids = set(assigned_roles.keys())
+        npc_data = [c for c in characters_data if isinstance(c, dict) and c.get("id") not in player_cids]
+
+        # Build character descriptions
+        char_descs = []
+        for c in characters_data:
+            if isinstance(c, dict):
+                name = c.get("name", c.get("id", "?"))
+                desc = c.get("description", "")
+                personality = c.get("personality", "")
+                motivation = c.get("motivation", "")
+                identity = c.get("identity", "")
+                is_pc = c.get("id") in player_cids
+                tag = "👤 玩家角色" if is_pc else "🎭 NPC"
+                parts = [f"{tag}: {name}"]
+                if identity:
+                    parts.append(f"  身份：{identity}")
+                if personality:
+                    parts.append(f"  性格：{personality}")
+                if motivation:
+                    parts.append(f"  动机：{motivation}")
+                if desc:
+                    parts.append(f"  描述：{desc[:300]}")
+                char_descs.append("\n".join(parts))
+
+        # Build world setting summary
+        world_text = ""
+        if world_setting:
+            for wb in world_setting[:3]:
+                if isinstance(wb, dict):
+                    world_text += wb.get("content", wb.get("title", ""))[:500] + "\n"
+                elif isinstance(wb, str):
+                    world_text += wb[:500] + "\n"
+
+        # Build plot overview (initial node info)
+        plot_overview = ""
+        current_node = state.get("current_node", "")
+        inspection = state.get("plot_inspection", {})
+        if isinstance(inspection, dict):
+            node_names = inspection.get("node_names", {})
+            if current_node and current_node in node_names:
+                plot_overview += f"起始节点：{node_names[current_node]}\n"
+            for n in plot_graph.get("nodes", []):
+                if isinstance(n, dict) and n.get("id") == current_node:
+                    nd = n.get("data", {}) if isinstance(n.get("data"), dict) else {}
+                    sd = nd.get("sceneDescription", "")
+                    if sd:
+                        plot_overview += f"起始场景描述：{sd[:400]}\n"
+                    break
+        total_nodes = len(plot_graph.get("nodes", []))
+        end_cps = state.get("end_checkpoints", [])
+        if total_nodes:
+            plot_overview += f"总节点数：{total_nodes}，结局节点数：{len(end_cps)}\n"
+
+        system_prompt = f"""你是游戏记忆初始化器。请基于剧本内容，创建初始长期记忆，重点突出**每个人物该知道什么、不该知道什么**，确保后续情节不穿帮。
+
+记忆结构（严格返回此JSON）：
+{{
+    "player_memory": {{
+        "角色名": "（该角色知道什么、不知道什么、身份背景、核心目标——请详细凝练，100-300字）"
+    }},
+    "npc_memory": {{
+        "NPC名": "（该NPC知道什么/不知道什么，对各玩家角色的初始态度——请详细凝练，100-300字）"
+    }},
+    "global_note": "（全局重要信息：世界观关键设定、主线剧情框架、隐藏秘密、注意不要泄露给玩家的事——请详细凝练，200-400字）"
+}}
+
+⚠️ 关键原则：
+- player_memory 中务必写清该角色**不知道**的信息（如：角色A不知道NPC甲的真实身份）
+- npc_memory 中务必写清该NPC对每个玩家角色的**初始态度**（信任/中立/警惕/敌意等）
+- global_note 中务必凝练世界观关键点和**DM注意事项**（哪些事不能过早透露）
+- 只返回JSON，不要任何解释"""
+
+        user_prompt = f"""📖 剧本：《{script_title}》
+
+🌍 世界观设定：
+{world_text if world_text else '（无特殊设定）'}
+
+👥 全部角色：
+{chr(10).join(char_descs)}
+
+📜 剧情概览：
+{plot_overview if plot_overview else '（待展开）'}
+
+👤 玩家分配的角色：{', '.join(player_char_names) if player_char_names else '（未分配/沙盒模式）'}
+
+🎭 NPC列表：{', '.join(n.get('name', n.get('id', '?')) for n in npc_data) if npc_data else '（由对话中引入）'}
+
+请生成初始长期记忆JSON。"""
+
+        from services.ai_service import get_ai_client, get_default_model
+        client = get_ai_client()
+        if not client:
+            print("[LongTermMemory] ⚠️ AI client 不可用，跳过初始化")
+            return
+
+        model = get_default_model()
+        print(f"[LongTermMemory] 🔄 初始化长期记忆 (model={model})...")
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=2500,
+        )
+
+        raw = response.choices[0].message.content or ""
+        print(f"[LongTermMemory] AI 初始化返回 ({len(raw)} chars):\n{raw[:500]}...")
+
+        # Parse JSON
+        json_str = raw.strip()
+        if json_str.startswith("```"):
+            json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
+            json_str = re.sub(r'\s*```$', '', json_str)
+
+        new_memory = json.loads(json_str)
+        if isinstance(new_memory, dict):
+            ltm = state.get("long_term_memory", {})
+            state["long_term_memory"] = {
+                "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
+                "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
+                "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+            }
+            print("=" * 60)
+            print(f"[LongTermMemory] ✅ 长期记忆已初始化")
+            print(f"  📋 global_note ({len(state['long_term_memory']['global_note'])} chars):")
+            print(f"     {state['long_term_memory']['global_note'][:300]}...")
+            print(f"  👤 player_memory keys: {list(state['long_term_memory']['player_memory'].keys())}")
+            print(f"  🎭 npc_memory keys: {list(state['long_term_memory']['npc_memory'].keys())}")
+            print("=" * 60)
+        else:
+            print(f"[LongTermMemory] ⚠️ AI 初始化返回的不是合法字典: {type(new_memory)}")
+
+    except asyncio.TimeoutError:
+        print("[LongTermMemory] ⏰ 初始化超时")
+    except json.JSONDecodeError as e:
+        print(f"[LongTermMemory] ⚠️ 初始化 JSON 解析失败: {e}")
+    except Exception as e:
+        print(f"[LongTermMemory] ⚠️ 初始化失败: {e}")
+
+
+async def _update_long_term_memory_async(room_id: str, room: dict):
+    """
+    Fire-and-forget: call AI (deepseek-v4-pro) to update long_term_memory
+    based on the full chat history and current memory state.
+    Runs as a background task to avoid blocking the game loop.
+    """
+    try:
+        state = room.get("state", {})
+        chat = state.get("chat_history", [])
+        if not chat:
+            return
+
+        ltm = state.get("long_term_memory", {})
+        if isinstance(ltm, dict):
+            current_json = json.dumps(ltm, ensure_ascii=False, indent=2)
+        else:
+            current_json = str(ltm)
+
+        # Build chat summary for context
+        chat_lines = []
+        for m in chat[-30:]:  # last 30 messages for update context
+            if isinstance(m, dict):
+                role = m.get("role", "?")
+                sender = m.get("sender", "")
+                content = m.get("content", "")
+                label = "DM" if role == "dm" else (sender or "玩家")
+                chat_lines.append(f"[{label}] {content[:200]}")
+        chat_summary = "\n".join(chat_lines)
+
+        characters_data = state.get("characters_data", [])
+        char_names = [c.get("name", "") for c in characters_data if isinstance(c, dict) and c.get("name")]
+
+        system_prompt = f"""你是一个游戏记忆管理器。你需要维护长期记忆，跟踪以下三类信息：
+
+1. **player_memory** ({{"角色名": "str"}}): 记录每个玩家做了什么关键行动、知道了什么信息、不知道什么信息
+2. **npc_memory** ({{"NPC名": "str"}}): 记录每个NPC知道/不知道的信息，以及对每个玩家的态度（好感、中立、警惕、敌意等）
+3. **global_note** (str): 凝练全局重要事件、剧情转折点、关键发现
+
+当前已知角色: {', '.join(char_names) if char_names else '从对话中判断'}
+
+请基于对话历史更新长期记忆。只返回纯JSON，不要任何解释：
+
+{{
+    "player_memory": {{
+        "角色名": "该角色做了什么、知道什么、不知道什么..."
+    }},
+    "npc_memory": {{
+        "NPC名": "知道/不知道什么。对各玩家态度：..."
+    }},
+    "global_note": "凝练的全局重要事件..."
+}}"""
+
+        user_prompt = f"""当前长期记忆：
+{current_json}
+
+近期对话历史：
+{chat_summary}
+
+请更新长期记忆。"""
+
+        from services.ai_service import get_ai_client, get_default_model
+        client = get_ai_client()
+        if not client:
+            print("[LongTermMemory] ⚠️ AI client 不可用，跳过更新")
+            return
+
+        model = get_default_model()
+        print(f"[LongTermMemory] 🔄 后台更新长期记忆 (model={model}, chat_len={len(chat)})...")
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=3000,
+        )
+
+        raw = response.choices[0].message.content or ""
+        print(f"[LongTermMemory] AI 原始返回 ({len(raw)} chars):\n{raw}")
+
+        # Parse JSON from response (strip markdown code blocks if present)
+        json_str = raw.strip()
+        if json_str.startswith("```"):
+            json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
+            json_str = re.sub(r'\s*```$', '', json_str)
+
+        new_memory = json.loads(json_str)
+        if isinstance(new_memory, dict):
+            state["long_term_memory"] = {
+                "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
+                "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
+                "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+            }
+            print("=" * 60)
+            print(f"[LongTermMemory] ✅ 长期记忆已更新")
+            print(f"  📋 global_note: {state['long_term_memory']['global_note'][:200]}...")
+            print(f"  👤 player_memory keys: {list(state['long_term_memory']['player_memory'].keys())}")
+            print(f"  🎭 npc_memory keys: {list(state['long_term_memory']['npc_memory'].keys())}")
+            print("=" * 60)
+        else:
+            print(f"[LongTermMemory] ⚠️ AI 返回的不是合法字典: {type(new_memory)}")
+
+    except asyncio.TimeoutError:
+        print("[LongTermMemory] ⏰ 更新超时")
+    except json.JSONDecodeError as e:
+        print(f"[LongTermMemory] ⚠️ JSON 解析失败: {e}")
+    except Exception as e:
+        print(f"[LongTermMemory] ⚠️ 更新失败: {e}")
 
 
 @sio.event
@@ -1283,11 +1594,13 @@ async def _generate_scene_image_for_node(
             url_to_base64, _url_to_base64_sync,
         )
 
-        # 1. Try cache first
-        if scene_cache_exists(scene_name):
-            result_b64 = get_cached_scene_base64(scene_name)
+        scenario = script_title[:50] if script_title else "default"
+
+        # 1. Try cache first (keyed by scene+scenario to avoid cross-script collisions)
+        if scene_cache_exists(scene_name, scenario):
+            result_b64 = get_cached_scene_base64(scene_name, scenario)
             if result_b64:
-                print(f"📦 [Scene] 使用缓存的场景图: {scene_name}")
+                print(f"📦 [Scene] 使用缓存的场景图: {scene_name} [{scenario}]")
                 await sio.emit("image_message", {
                     "url": result_b64,
                     "label": f"场景图: {scene_name}",
@@ -1302,7 +1615,6 @@ async def _generate_scene_image_for_node(
         )
 
         # Try to include character visuals for all available characters
-        scenario = script_title[:50] if script_title else "default"
         char_visuals = []
         if characters_data:
             for c in characters_data[:4]:  # max 4 characters
@@ -1352,7 +1664,7 @@ async def _generate_scene_image_for_node(
         print(f"✅ [Scene] 场景图片URL生成成功: {image_url[:100]}...")
 
         # 4. Download → base64 → cache
-        cache_path = scene_cache_path(scene_name)
+        cache_path = scene_cache_path(scene_name, scenario)
         if download_and_cache(image_url, cache_path):
             result_b64 = cached_file_base64(cache_path)
             if result_b64:

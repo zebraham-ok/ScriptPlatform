@@ -57,7 +57,7 @@ async def dm_response_node(state: GameState) -> Dict[str, Any]:
                 model=model,
                 messages=messages,
                 temperature=0.8,
-                max_tokens=2000,
+                max_tokens=4000,
             )
             raw = response.choices[0].message.content or ""
             print("-" * 40)
@@ -99,6 +99,7 @@ async def dm_response_node(state: GameState) -> Dict[str, Any]:
         "dm_response": narration,
         "dm_actions": parsed.get("actions", []),
         "dm_options": parsed.get("options", []),
+        "dm_modifications": parsed.get("modifications", []),
         "private_messages": parsed.get("private_messages", {}),
         "chat_history": chat,
         "_route": "done",
@@ -174,6 +175,15 @@ def _build_system_prompt(state: GameState) -> str:
 - 选项2
 ##PRIVATE##
 {"角色ID": "私密消息内容"}
+##MODIFICATION##
+[{"type": "addItem", "params": {"person": "角色名称", "item": "物品名称", "description": "物品描述"}}, {"type": "lossItem", "params": {"person": "角色名称", "item": "物品名称", "description": "失去原因"}}, {"type": "changeAttr", "params": {"person": "角色名称", "attr": "属性名", "amount": 1}}]
+
+📦 物品与属性修改规则：
+- 当玩家获得物品、失去物品、或属性发生变化时，在 ##MODIFICATION## 中声明（可为空数组 []）
+- addItem：玩家获得新物品，item 为物品名称，description 为简短描述
+- lossItem：玩家失去物品，item 为物品名称
+- changeAttr：属性变化，attr 为属性名（如"体力"），amount 为正代表增加、负代表减少
+- person 使用上下文中的角色名称
 
 ⚠️ 检定后解读规则（当对话记录中出现 🎲 检定结果时）：
 9. ⛔ 此时系统已完成掷骰，你的任务是**严格根据结果为成功或失败
@@ -229,10 +239,11 @@ def _parse_dm_response(raw: str) -> dict:
         "actions": [],
         "options": [],
         "private_messages": {},
+        "modifications": [],
     }
 
     # Extract ##NARRATION## block (case-insensitive for robustness)
-    narr_match = re.search(r'##NARRATION##\s*([\s\S]*?)(?=##ACTIONS##|##OPTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
+    narr_match = re.search(r'##NARRATION##\s*([\s\S]*?)(?=##ACTIONS##|##OPTIONS##|##PRIVATE##|##MODIFICATION##|$)', raw, re.IGNORECASE)
     if narr_match:
         result["narration"] = narr_match.group(1).strip()
     else:
@@ -241,7 +252,7 @@ def _parse_dm_response(raw: str) -> dict:
         result["narration"] = stripped.strip()
 
     # Extract ##ACTIONS## block
-    actions_match = re.search(r'##ACTIONS##\s*([\s\S]*?)(?=##NARRATION##|##OPTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
+    actions_match = re.search(r'##ACTIONS##\s*([\s\S]*?)(?=##NARRATION##|##OPTIONS##|##PRIVATE##|##MODIFICATION##|$)', raw, re.IGNORECASE)
     if actions_match:
         try:
             actions_text = actions_match.group(1).strip()
@@ -250,7 +261,7 @@ def _parse_dm_response(raw: str) -> dict:
             result["actions"] = []
 
     # Extract ##OPTIONS## block — handle bullet (-), numbered (1.), and mixed formats
-    options_match = re.search(r'##OPTIONS##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
+    options_match = re.search(r'##OPTIONS##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##PRIVATE##|##MODIFICATION##|$)', raw, re.IGNORECASE)
     if options_match:
         opts_text = options_match.group(1).strip()
         result["options"] = [
@@ -258,12 +269,20 @@ def _parse_dm_response(raw: str) -> dict:
         ]
 
     # Extract ##PRIVATE## block
-    priv_match = re.search(r'##PRIVATE##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##OPTIONS##|$)', raw, re.IGNORECASE)
+    priv_match = re.search(r'##PRIVATE##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##OPTIONS##|##MODIFICATION##|$)', raw, re.IGNORECASE)
     if priv_match:
         try:
             result["private_messages"] = json.loads(priv_match.group(1).strip())
         except json.JSONDecodeError:
             pass
+
+    # Extract ##MODIFICATION## block
+    mod_match = re.search(r'##MODIFICATION##\s*([\s\S]*?)(?=##NARRATION##|##ACTIONS##|##OPTIONS##|##PRIVATE##|$)', raw, re.IGNORECASE)
+    if mod_match:
+        try:
+            result["modifications"] = json.loads(mod_match.group(1).strip())
+        except json.JSONDecodeError:
+            result["modifications"] = []
 
     return result
 
@@ -273,14 +292,14 @@ def _strip_section_headers(text: str) -> str:
     Handles all known section types, including NARRATION and EPILOGUE."""
     # First remove section markers themselves (keep content between them as narration)
     cleaned = re.sub(
-        r'##(?:ACTIONS|OPTIONS|PRIVATE|NARRATION|EPILOGUE)##',
+        r'##(?:ACTIONS|OPTIONS|PRIVATE|NARRATION|EPILOGUE|MODIFICATION)##',
         '',
         text,
         flags=re.IGNORECASE,
     )
     # Then remove section content blocks that follow headers
     cleaned = re.sub(
-        r'##(?:ACTIONS|OPTIONS|PRIVATE|EPILOGUE)##\s*[\s\S]*?(?=##|$)',
+        r'##(?:ACTIONS|OPTIONS|PRIVATE|EPILOGUE|MODIFICATION)##\s*[\s\S]*?(?=##|$)',
         '',
         cleaned,
         flags=re.IGNORECASE,

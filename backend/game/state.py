@@ -57,7 +57,7 @@ class GameState(TypedDict, total=False):
     # === 游戏运行时 ===
     inventory: List[dict]              # player inventory
     chat_history: list  # all messages (custom dicts, managed externally; plain list = replacement semantics)
-    long_term_memory: dict             # long-term memory (relationships, clues)
+    long_term_memory: dict             # {player_memory: {name: str}, npc_memory: {name: str}, global_note: str}
     plot_inspection: dict              # DM director notes
 
     # === 多人轮次管理 ===
@@ -71,6 +71,7 @@ class GameState(TypedDict, total=False):
     dm_response: str                   # current DM narration
     dm_actions: List[dict]             # AI action list [{type, params}]
     dm_options: List[str]              # quick options for players
+    dm_modifications: List[dict]       # AI modifications: addItem/lossItem/changeAttr
     private_messages: Dict[str, str]   # {sid: message} DM private messages
 
     # === 检定/投票 ===

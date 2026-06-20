@@ -43,21 +43,21 @@ def _make_key(*parts: str) -> str:
 #  Scene Image Cache
 # ========================================
 
-def scene_cache_path(scene_name: str) -> str:
-    """Scene image cache file path."""
+def scene_cache_path(scene_name: str, scenario_name: str = "default") -> str:
+    """Scene image cache file path (keyed by scene_name + scenario_name to avoid cross-script collisions)."""
     normalized = scene_name.strip()
-    key = _make_key("scene", normalized)
+    key = _make_key("scene", normalized, scenario_name)
     return os.path.join(CACHE_DIR, f"scene_{key}.png")
 
 
-def scene_cache_exists(scene_name: str) -> bool:
+def scene_cache_exists(scene_name: str, scenario_name: str = "default") -> bool:
     """Check if scene image cache exists."""
-    return os.path.exists(scene_cache_path(scene_name))
+    return os.path.exists(scene_cache_path(scene_name, scenario_name))
 
 
-def get_cached_scene_base64(scene_name: str) -> Optional[str]:
+def get_cached_scene_base64(scene_name: str, scenario_name: str = "default") -> Optional[str]:
     """Read cached scene image as base64 data URI."""
-    path = scene_cache_path(scene_name)
+    path = scene_cache_path(scene_name, scenario_name)
     if os.path.exists(path):
         with open(path, "rb") as f:
             data = base64.b64encode(f.read()).decode()
@@ -308,9 +308,9 @@ async def generate_scene_image(
         Base64 data URI string, or None if generation fails.
     """
     # 1. Check cache
-    if scene_cache_exists(scene_name):
-        print(f"📦 [Scene] 使用本地缓存的场景图: {scene_name}")
-        return get_cached_scene_base64(scene_name)
+    if scene_cache_exists(scene_name, scenario_title):
+        print(f"📦 [Scene] 使用本地缓存的场景图: {scene_name} [{scenario_title}]")
+        return get_cached_scene_base64(scene_name, scenario_title)
 
     # 2. Build prompt
     desc_text = scene_description[:300] if scene_description else ""
@@ -339,7 +339,7 @@ async def generate_scene_image(
     print(f"✅ [Scene] 场景图片URL生成成功: {image_url[:100]}...")
 
     # 4. Download and cache
-    cache_path = scene_cache_path(scene_name)
+    cache_path = scene_cache_path(scene_name, scenario_title)
     if download_and_cache(image_url, cache_path):
         return cached_file_base64(cache_path)
 

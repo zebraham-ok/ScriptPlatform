@@ -176,6 +176,83 @@ async def playing_node(state: GameState) -> Dict[str, Any]:
     if not _node_switch_attempted:
         print(f"  🔄 节点切换: 未尝试 (DM 未请求 update_node)")
 
+    # ── Handle DM modifications (addItem, lossItem, changeAttr) ──
+    dm_mods = state.get("dm_modifications", [])
+    if dm_mods:
+        players = dict(state.get("players", {}))
+        assigned_roles = state.get("assigned_roles", {})
+        characters_data = state.get("characters_data", [])
+        char_attrs = dict(state.get("character_attributes", {}))
+
+        # Build name→characterId mapping
+        name_to_cid = {}
+        for c in characters_data:
+            if isinstance(c, dict):
+                name_to_cid[c.get("name", "").strip()] = c.get("id", "")
+                # Also map label if different from name
+                label = c.get("label", "")
+                if label and label != c.get("name", ""):
+                    name_to_cid[label.strip()] = c.get("id", "")
+
+        # Build characterId→playerSid mapping
+        cid_to_sid = {cid: psid for cid, psid in assigned_roles.items()}
+
+        print(f"[playing_node] 📦 处理 DM 修改 ({len(dm_mods)} 条):")
+
+        for mod in dm_mods:
+            mod_type = mod.get("type", "")
+            params = mod.get("params", {})
+            person = params.get("person", "").strip()
+
+            # Resolve person → characterId
+            cid = person if person in cid_to_sid else name_to_cid.get(person, "")
+            if not cid:
+                print(f"[playing_node] ⚠️ 无法解析角色 '{person}'（可用角色: {list(name_to_cid.keys())}），跳过修改")
+                continue
+
+            psid = cid_to_sid.get(cid, "")
+            pdata = dict(players.get(psid, {})) if psid else {}
+
+            if mod_type == "addItem":
+                inv = list(pdata.get("inventory", []))
+                new_item = {
+                    "name": params.get("item", ""),
+                    "description": params.get("description", ""),
+                }
+                inv.append(new_item)
+                players[psid] = {**pdata, "inventory": inv}
+                print(f"  📦 {person} 获得物品: {new_item['name']}")
+
+            elif mod_type == "lossItem":
+                inv = list(pdata.get("inventory", []))
+                item_name = params.get("item", "")
+                new_inv = [i for i in inv if (i.get("name") if isinstance(i, dict) else i) != item_name]
+                if len(new_inv) < len(inv):
+                    players[psid] = {**pdata, "inventory": new_inv}
+                    print(f"  🗑️ {person} 失去物品: {item_name}")
+                else:
+                    print(f"  ⚠️ {person} 背包中未找到物品 '{item_name}'")
+
+            elif mod_type == "changeAttr":
+                attr_name = params.get("attr", "")
+                amount_val = params.get("amount", 0)
+                try:
+                    amount_val = int(amount_val)
+                except (ValueError, TypeError):
+                    amount_val = 0
+                if cid in char_attrs:
+                    old_val = char_attrs[cid].get(attr_name, 0)
+                    char_attrs[cid] = dict(char_attrs[cid])
+                    char_attrs[cid][attr_name] = old_val + amount_val
+                    sign = "+" if amount_val >= 0 else ""
+                    print(f"  🔧 {person} 属性 '{attr_name}': {old_val} → {old_val + amount_val} ({sign}{amount_val})")
+                else:
+                    print(f"  ⚠️ 角色 '{cid}' 无属性数据，无法修改")
+
+        updates["players"] = players
+        updates["character_attributes"] = char_attrs
+        updates["dm_modifications"] = []  # clear after processing
+
     # Clear dm_actions after processing
     if dm_actions and not updates.get("_route"):
         updates["dm_actions"] = []

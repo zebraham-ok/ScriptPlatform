@@ -280,6 +280,26 @@ def build_dm_context(state: GameState) -> str:
         if action_lines:
             parts.append("本轮已行动的玩家：\n" + "\n".join(action_lines))
 
+    # ── Long-term memory ──
+    ltm = state.get("long_term_memory", {})
+    if isinstance(ltm, dict) and (ltm.get("global_note") or ltm.get("player_memory") or ltm.get("npc_memory")):
+        mem_lines = []
+        global_note = ltm.get("global_note", "")
+        if global_note:
+            mem_lines.append(f"📖 全局摘要：{global_note[:500]}")
+        player_mem = ltm.get("player_memory", {})
+        if player_mem:
+            pm_lines = [f"  · {name}：{info[:200]}" for name, info in player_mem.items()]
+            if pm_lines:
+                mem_lines.append("👤 玩家状态：\n" + "\n".join(pm_lines))
+        npc_mem = ltm.get("npc_memory", {})
+        if npc_mem:
+            nm_lines = [f"  · {name}：{info[:200]}" for name, info in npc_mem.items()]
+            if nm_lines:
+                mem_lines.append("🎭 NPC状态：\n" + "\n".join(nm_lines))
+        if mem_lines:
+            parts.append("🧠 **长期记忆（已凝练的历史信息）**：\n" + "\n".join(mem_lines))
+
     # Prompt the DM
     instruction = """
 请作为DM，根据以上信息推进剧情。你可以：

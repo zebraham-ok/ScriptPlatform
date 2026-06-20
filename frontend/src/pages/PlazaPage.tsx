@@ -8,6 +8,7 @@ import { getStoredUser } from '../api';
 import type { ScriptCardData } from '../types';
 import ScriptCard from '../components/Plaza/ScriptCard';
 import ScriptFilter, { type SortType } from '../components/Plaza/ScriptFilter';
+import ParticleBackground from '../components/Effects/ParticleBackground';
 
 const PlazaPage: React.FC = () => {
   const setCurrentPage = useProjectStore((s) => s.setCurrentPage);
@@ -89,9 +90,10 @@ const PlazaPage: React.FC = () => {
   };
 
   return (
-    <div className="game-mode flex flex-col min-h-screen">
+    <div className="game-mode flex flex-col min-h-screen relative">
+      <ParticleBackground />
       {/* Hero Banner */}
-      <header className="flex-shrink-0 px-6 py-12 border-b border-slate-700/50 text-center">
+      <header className="relative z-10 flex-shrink-0 px-6 py-12 border-b border-slate-700/50 text-center">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent mb-3">
           捕梦剧本广场
         </h1>
@@ -125,7 +127,7 @@ const PlazaPage: React.FC = () => {
       />
 
       {/* Script Cards Grid */}
-      <div className="flex-1 overflow-y-auto p-6 game-scrollbar">
+      <div className="relative z-10 flex-1 overflow-y-auto p-6 game-scrollbar">
         <Spin spinning={loading}>
           {scripts.length === 0 && !loading ? (
             <div className="text-center text-slate-500 mt-20">
