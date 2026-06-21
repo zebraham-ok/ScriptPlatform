@@ -57,8 +57,11 @@ class GameState(TypedDict, total=False):
     # === 游戏运行时 ===
     inventory: List[dict]              # player inventory
     chat_history: list  # all messages (custom dicts, managed externally; plain list = replacement semantics)
-    long_term_memory: dict             # {player_memory: {name: str}, npc_memory: {name: str}, global_note: str}
-    plot_inspection: dict              # DM director notes
+    dm_notes: str                     # 主持人笔记（从编辑器 dmNotes 模块读取）
+    world_summary: str                 # AI 生成的世界观摘要（opening 时生成，后续反复注入）
+    plot_summary: str                  # AI 生成的情节总览摘要（opening 时生成，后续反复注入）
+    long_term_memory: dict             # {player_memory, npc_memory, global_note, plot_suggestion}
+    plot_inspection: dict              # DM director notes（节点索引元数据）
 
     # === 多人轮次管理 ===
     turn_number: int                   # current turn number

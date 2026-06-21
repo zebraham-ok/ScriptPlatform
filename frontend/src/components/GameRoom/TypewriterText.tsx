@@ -30,15 +30,19 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    setDisplayed(text);
+    const safeText = typeof text === 'string' ? text : String(text || '');
+    setDisplayed(safeText);
     setIsTyping(false);
     onCompleteRef.current?.();
   }, [text]);
 
   useEffect(() => {
+    // Ensure text is always a string
+    const safeText = typeof text === 'string' ? text : String(text || '');
+
     // Only reset when text value actually changes (not on parent re-renders)
-    const textChanged = prevTextRef.current !== text;
-    prevTextRef.current = text;
+    const textChanged = prevTextRef.current !== safeText;
+    prevTextRef.current = safeText;
 
     if (textChanged) {
       indexRef.current = 0;
@@ -47,7 +51,7 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
       setIsTyping(true);
     }
 
-    if (!text) {
+    if (!safeText) {
       setIsTyping(false);
       return;
     }
@@ -59,10 +63,10 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
 
     timerRef.current = setInterval(() => {
       indexRef.current += 1;
-      if (indexRef.current >= text.length) {
+      if (indexRef.current >= safeText.length) {
         finishTyping();
       } else {
-        setDisplayed(text.slice(0, indexRef.current));
+        setDisplayed(safeText.slice(0, indexRef.current));
       }
     }, speed);
 

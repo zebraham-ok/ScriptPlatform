@@ -14,6 +14,7 @@ const WorldviewPage: React.FC = () => {
     addWorldBlock,
     updateWorldBlock,
     deleteWorldBlock,
+    updateDmNotes,
     updateCharacterParams,
     setShowAI,
   } = useProjectStore();
@@ -214,6 +215,30 @@ const WorldviewPage: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* --- DM Notes (主持人笔记) --- */}
+      <Divider style={{ margin: '32px 0 16px' }} />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Text strong style={{ fontSize: 16 }}>
+          主持人笔记
+        </Text>
+      </div>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+        供 AI 主持人（DM）参考的幕后指导信息，每回合都会注入给 DM。可在此记录情节走向提示、关键转折点、NPC 行为准则等内容。
+      </Text>
+      <TextArea
+        autoSize={{ minRows: 6, maxRows: 30 }}
+        value={project?.dmNotes || ''}
+        onChange={(e) => updateDmNotes(e.target.value)}
+        placeholder="在此撰写给 AI 主持人的幕后笔记..."
+      />
 
       {/* --- Character Params Settings --- */}
       <Divider style={{ margin: '32px 0 16px' }} />

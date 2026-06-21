@@ -517,7 +517,9 @@ function _bindSocketEvents(
     });
 
     socket.on('chat_message', (data: any) => {
-      console.log('[Socket] chat_message:', data.role, data.sender, data.content?.substring(0, 80));
+      const safeContent = typeof data.content === 'string' ? data.content : String(data.content || '');
+      const contentPreview = safeContent.substring(0, 80);
+      console.log('[Socket] chat_message:', data.role, data.sender, contentPreview);
       // Map server field names → frontend field names:
       // Server: { role, sender, senderSid, characterId, content, timestamp, options }
       // Frontend: ChatMessage { type, senderName, senderId, content, timestamp, dmOptions }
@@ -525,7 +527,7 @@ function _bindSocketEvents(
         id: data.id || `msg_${Date.now()}`,
         senderId: data.senderSid || data.senderId || 'unknown',
         senderName: data.sender || data.senderName || '未知',
-        content: data.content || '',
+        content: safeContent,
         type: data.role || data.type || 'player',
         timestamp: typeof data.timestamp === 'string'
           ? new Date(data.timestamp).getTime()

@@ -15,6 +15,7 @@ def load_script_data(script_json: dict) -> dict:
     result = {
         "script_title": "",
         "world_setting": [],
+        "dm_notes": "",
         "characters_data": [],
         "locations_data": [],
         "items_data": [],
@@ -43,6 +44,11 @@ def load_script_data(script_json: dict) -> dict:
                     # Use first meaningful block as opening scene description
                     result["opening_scene"] = content[:500]
                     break
+
+    # DM Notes — editor module "主持人笔记" (between worldSetting and characters)
+    dm_notes = script_json.get("dmNotes", "")
+    if dm_notes:
+        result["dm_notes"] = dm_notes
 
     # Characters
     characters_graph = script_json.get("characters", {})

@@ -122,6 +122,7 @@ async def json_load_node(state: GameState) -> Dict[str, Any]:
         "stage": "OPENING",
         "script_title": data.get("script_title", "预设剧本"),
         "world_setting": data.get("world_setting", []),
+        "dm_notes": data.get("dm_notes", ""),
         "characters_data": data.get("characters_data", []),
         "locations_data": data.get("locations_data", []),
         "items_data": data.get("items_data", []),

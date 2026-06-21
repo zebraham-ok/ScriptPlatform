@@ -253,12 +253,17 @@ def build_dm_context(state: GameState) -> str:
 ⚠️ 这之后游戏将正式结束，请给出一次完整、饱满、有分量的最终叙述，字数250-500字。"""
         parts.append(ceremony_prompt)
 
-    # DM notes
-    plot_inspection = state.get("plot_inspection", {})
-    if isinstance(plot_inspection, dict):
-        notes = plot_inspection.get("dm_notes", "")
-        if notes:
-            parts.append(f"DM注意事项：{notes[:300]}")
+    # DM notes (from editor's "主持人笔记" module)
+    dm_notes = state.get("dm_notes", "")
+    if dm_notes:
+        parts.append(f"📝 **主持人笔记（来自剧本设定）**：\n{dm_notes[:500]}")
+
+    # Plot suggestion from long-term memory
+    ltm_ps = state.get("long_term_memory", {})
+    if isinstance(ltm_ps, dict):
+        ps = ltm_ps.get("plot_suggestion", "")
+        if ps:
+            parts.append(f"🎯 **DM引导建议（基于当前剧情进展）**：{ps[:300]}")
 
     # Player actions this turn
     players_acted = state.get("players_acted_this_turn", set())

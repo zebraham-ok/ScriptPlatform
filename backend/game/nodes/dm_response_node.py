@@ -215,12 +215,15 @@ def _build_system_prompt(state: GameState) -> str:
 - 集中于给出一次完整、饱满的最终叙述"""
 
     plot_notes = ""
-    inspection = state.get("plot_inspection", {})
-    if inspection:
-        if isinstance(inspection, dict):
-            dn = inspection.get("dm_notes", "")
-            if dn:
-                plot_notes = f"\nDM注意事项：{dn}"
+    dm_notes = state.get("dm_notes", "")
+    if dm_notes:
+        plot_notes = f"\n主持人笔记：{dm_notes[:500]}"
+
+    ltm = state.get("long_term_memory", {})
+    if isinstance(ltm, dict):
+        ps = ltm.get("plot_suggestion", "")
+        if ps:
+            plot_notes += f"\n🎯 DM引导建议：{ps[:200]}"
 
     return f"""{rules}
 

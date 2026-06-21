@@ -123,6 +123,7 @@ export interface ProjectData {
   projectId: string;
   title: string;
   worldSetting: WorldBlock[];
+  dmNotes?: string;
   characterParams: CharacterParamDefinition[];
   characters: GraphData;
   locations: GraphData;

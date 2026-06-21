@@ -121,6 +121,7 @@ export function exportLangGraphState(project: ProjectData) {
       title: w.title,
       content: w.content,
     })),
+    dmNotes: project.dmNotes || '',
     characters,
     locations,
     items,
@@ -254,6 +255,7 @@ function buildLangGraphState(project: ProjectData): any {
   return {
     script_title: project.title,
     world_setting: project.worldSetting.map((w) => ({ title: w.title, content: w.content })),
+    dmNotes: project.dmNotes || '',
     characters, locations, items,
     plot: { initial_checkpoint: project.plot.initialCheckpoint, end_checkpoints: project.plot.endCheckpoints || [], checkpoints, transitions },
     metadata: { exported_at: new Date().toISOString(), source: 'script-builder-platform' },

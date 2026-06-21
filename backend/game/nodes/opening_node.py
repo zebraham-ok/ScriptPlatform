@@ -12,6 +12,7 @@ This node runs AFTER generate_node or json_load_node and BEFORE playing_node.
 import asyncio
 import hashlib
 import json
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -113,8 +114,10 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     # Try AI with a short timeout so stage transition isn't blocked
     opening_text = fallback_text
     opening_pending = False
+    world_summary_gen = ""
+    plot_summary_gen = ""
     try:
-        opening_text = await asyncio.wait_for(
+        ai_result = await asyncio.wait_for(
             _generate_ai_opening(
                 script_title=script_title,
                 world_summary=world_summary,
@@ -126,11 +129,14 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
                 initial_node_context=initial_node_context,
                 story_overview=story_overview,
             ),
-            timeout=3.0,  # Don't block stage transition for more than 3s
+            timeout=5.0,  # Increased to 5s to allow summaries generation
         )
+        opening_text = ai_result.get("opening", fallback_text)
+        world_summary_gen = ai_result.get("world_summary", "")
+        plot_summary_gen = ai_result.get("plot_summary", "")
     except (asyncio.TimeoutError, Exception) as e:
         if isinstance(e, asyncio.TimeoutError):
-            print(f"[opening_node] AI opening timed out (>3s), using fallback, will retry in background")
+            print(f"[opening_node] AI opening timed out (>5s), using fallback, will retry in background")
         else:
             print(f"[opening_node] AI opening failed: {e}, using fallback")
         opening_text = fallback_text
@@ -141,6 +147,8 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     updates["scene"] = display_scene_name
     updates["scene_description"] = raw_scene_desc or opening_text
     updates["opening_narration"] = opening_text
+    updates["world_summary"] = world_summary_gen
+    updates["plot_summary"] = plot_summary_gen
     updates["_opening_pending"] = opening_pending
     updates["_opening_is_ai"] = not opening_pending  # True if AI successfully generated
     updates["_opening_prompt_data"] = {
@@ -314,17 +322,18 @@ def _infer_attr_type(field_path: str, char_info: dict) -> str:
 
 
 def _summarize_world(world_setting: list) -> str:
-    """Build a condensed world summary string."""
+    """Build a complete world summary string (all blocks, for AI context)."""
     if not world_setting:
         return ""
+    blocks = []
     for block in world_setting:
         if isinstance(block, dict):
             content = block.get("content", "")
             if content:
                 title = block.get("title", "")
                 prefix = f"{title}：" if title else ""
-                return f"{prefix}{content[:300]}"
-    return ""
+                blocks.append(f"{prefix}{content[:500]}")
+    return "\n\n".join(blocks)
 
 
 def _summarize_characters(characters_data: list) -> str:
@@ -642,8 +651,9 @@ async def _generate_ai_opening(
     raw_scene_desc: str,
     initial_node_context: str = "",
     story_overview: str = "",
-) -> str:
-    """Use AI to generate a rich DM opening narration."""
+) -> dict:
+    """Use AI to generate: opening narration + world_summary + plot_summary.
+    Returns {"opening": str, "world_summary": str, "plot_summary": str}."""
     # Build character context for AI background knowledge (not for listing)
     char_context = f"\n\n**场上人物（仅供背景参考，不要在开场白中列出可选角色）**：\n{char_summary}" if char_summary else ""
 
@@ -667,16 +677,7 @@ async def _generate_ai_opening(
 {initial_node_context}
 """
 
-    prompt = f"""你是一个专业的跑团/剧本杀 DM（主持人）。请为以下剧本写一个开场白，要求：
-
-1. 用生动、沉浸式的语言营造氛围
-2. 简要引入世界观
-3. 根据"起始节点详细信息"中的场景描述和玩家可选行动，自然地引导玩家进入剧情
-4. 如果节点有DM备注（不告知玩家的信息），请将这些隐藏信息融入叙述中以营造悬念或伏笔，但不要直接透露
-5. 描述当前场景，自然地融入在场人物的描写（作为场景的一部分，而非列出可选角色）
-6. 给予玩家自然的行动引导（参考节点中的玩家可选行动方向，但不要以列表形式呈现）
-7. 长度控制在 300 字以内
-8. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
+    prompt = f"""你是一个专业的跑团/剧本杀 DM（主持人）。请完成以下两项任务，严格按照输出格式回复。
 
 ---
 
@@ -699,8 +700,24 @@ async def _generate_ai_opening(
 
 ---
 
-请输出开场白正文
-直接输出，不要添加解释。"""
+## 任务1：开场白
+为以下剧本写一个开场白，要求：
+1. 用生动、沉浸式的语言营造氛围
+2. 简要引入世界观
+3. 根据"起始节点详细信息"中的场景描述和玩家可选行动，自然地引导玩家进入剧情
+4. 如果节点有DM备注（不告知玩家的信息），请将这些隐藏信息融入叙述中以营造悬念或伏笔，但不要直接透露
+5. 描述当前场景，自然地融入在场人物的描写（作为场景的一部分，而非列出可选角色）
+6. 给予玩家自然的行动引导（参考节点中的玩家可选行动方向，但不要以列表形式呈现）
+7. 长度控制在 300 字以内
+8. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
+
+## 任务2：世界观摘要 + 情节摘要
+请严格按以下JSON格式输出（不要任何解释，只输出JSON）：
+{{
+    "opening": "开场白正文...",
+    "world_summary": "凝练的世界观摘要（200-400字，概括世界观关键设定、核心规则、重要背景）",
+    "plot_summary": "凝练的情节总览摘要（200-400字，概括主线剧情走向、关键节点、核心冲突、伏笔和结局方向）"
+}}"""
 
     try:
         from services.ai_service import get_ai_client, get_default_model
@@ -711,23 +728,69 @@ async def _generate_ai_opening(
                 model=get_default_model(),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.8,
-                max_tokens=2000,
+                max_tokens=2500,
                 stop=None,
             )
-            text = response.choices[0].message.content or ""
-            if text.strip():
-                # Ensure markdown structure
-                # if not text.startswith("##"):
-                #     text = f"## 🎬 {script_title}\n\n📍 *{scene_name}*\n\n{text}"
-                print(f"[opening_node] AI opening generated: {len(text)} chars")
-                return text
+            raw_text = response.choices[0].message.content or ""
+            if raw_text.strip():
+                print(f"[opening_node] AI opening generated: {len(raw_text)} chars")
+                return _parse_opening_response(raw_text, script_title, world_summary,
+                                               scene_name, raw_scene_desc, char_summary,
+                                               loc_summary, plot_context, story_overview)
     except Exception as e:
         print(f"[opening_node] AI opening generation failed: {e}")
 
     # Fallback
-    return _build_fallback_opening(
-        script_title, world_summary, scene_name, raw_scene_desc
-    )
+    return {
+        "opening": _build_fallback_opening(script_title, world_summary, scene_name, raw_scene_desc),
+        "world_summary": "",
+        "plot_summary": "",
+    }
+
+
+def _parse_opening_response(
+    raw_text: str,
+    script_title: str,
+    world_summary_fallback: str,
+    scene_name: str,
+    raw_scene_desc: str,
+    char_summary: str = "",
+    loc_summary: str = "",
+    plot_context: str = "",
+    story_overview: str = "",
+) -> dict:
+    """Parse AI's JSON response containing opening + world_summary + plot_summary."""
+    result = {
+        "opening": _build_fallback_opening(script_title, world_summary_fallback, scene_name, raw_scene_desc),
+        "world_summary": "",
+        "plot_summary": "",
+    }
+
+    try:
+        # Strip markdown code blocks
+        json_str = raw_text.strip()
+        if json_str.startswith("```"):
+            json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
+            json_str = re.sub(r'\s*```$', '', json_str)
+
+        parsed = json.loads(json_str)
+        if isinstance(parsed, dict):
+            if parsed.get("opening"):
+                result["opening"] = str(parsed["opening"])
+            if parsed.get("world_summary"):
+                result["world_summary"] = str(parsed["world_summary"])[:600]
+            if parsed.get("plot_summary"):
+                result["plot_summary"] = str(parsed["plot_summary"])[:600]
+            print(f"[opening_node] Parsed summaries: world={len(result['world_summary'])} chars, "
+                  f"plot={len(result['plot_summary'])} chars")
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"[opening_node] Failed to parse opening JSON: {e}")
+        # If JSON parsing fails, try to extract opening text from raw response
+        clean = raw_text.strip()
+        if clean and len(clean) > 20:
+            result["opening"] = clean
+
+    return result
 
 
 def opening_condition(state: GameState) -> str:

@@ -71,6 +71,9 @@ def _build_initial_state(room: dict) -> dict:
         "role_prefs": {},
         "script_title": room.get("scriptTitle", ""),
         "world_setting": [],
+        "dm_notes": "",
+        "world_summary": "",
+        "plot_summary": "",
         "characters_data": [],
         "locations_data": [],
         "items_data": [],
@@ -89,6 +92,7 @@ def _build_initial_state(room: dict) -> dict:
             "player_memory": {},
             "npc_memory": {},
             "global_note": "",
+            "plot_suggestion": "",
         },
         "plot_inspection": {},
         "turn_number": 1,
@@ -1263,14 +1267,22 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
                     parts.append(f"  描述：{desc[:300]}")
                 char_descs.append("\n".join(parts))
 
-        # Build world setting summary
+        # Build world setting summary (ALL blocks, complete)
         world_text = ""
         if world_setting:
-            for wb in world_setting[:3]:
+            for wb in world_setting:
                 if isinstance(wb, dict):
-                    world_text += wb.get("content", wb.get("title", ""))[:500] + "\n"
+                    title = wb.get("title", "")
+                    content = wb.get("content", "")
+                    if content:
+                        world_text += f"【{title}】\n{content[:800]}\n\n" if title else f"{content[:800]}\n\n"
                 elif isinstance(wb, str):
-                    world_text += wb[:500] + "\n"
+                    world_text += wb[:800] + "\n\n"
+        world_text = world_text.strip()
+
+        # Read pre-generated summaries from opening_node
+        world_summary_gen = state.get("world_summary", "")
+        plot_summary_gen = state.get("plot_summary", "")
 
         # Build plot overview (initial node info)
         plot_overview = ""
@@ -1302,19 +1314,30 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
     "npc_memory": {{
         "NPC名": "（该NPC知道什么/不知道什么，对各玩家角色的初始态度——请详细凝练，100-300字）"
     }},
-    "global_note": "（全局重要信息：世界观关键设定、主线剧情框架、隐藏秘密、注意不要泄露给玩家的事——请详细凝练，200-400字）"
+    "global_note": "（全局重要信息：世界观关键设定、主线剧情框架、隐藏秘密、注意不要泄露给玩家的事——请详细凝练，200-400字）",
+    "plot_suggestion": "（基于当前全部信息，给出DM下一轮应往什么方向引导的简要建议——50-150字）"
 }}
 
 ⚠️ 关键原则：
 - player_memory 中务必写清该角色**不知道**的信息（如：角色A不知道NPC甲的真实身份）
 - npc_memory 中务必写清该NPC对每个玩家角色的**初始态度**（信任/中立/警惕/敌意等）
 - global_note 中务必凝练世界观关键点和**DM注意事项**（哪些事不能过早透露）
+- plot_suggestion 中给出开局第一轮的DM引导方向，帮助DM把控剧情节奏
 - 只返回JSON，不要任何解释"""
 
         user_prompt = f"""📖 剧本：《{script_title}》
 
-🌍 世界观设定：
+🌍 世界观设定（完整）：
 {world_text if world_text else '（无特殊设定）'}
+
+📝 AI生成的世界观摘要：
+{world_summary_gen if world_summary_gen else '（暂未生成）'}
+
+📝 AI生成的情节总览：
+{plot_summary_gen if plot_summary_gen else '（暂未生成）'}
+
+📜 DM主持人笔记：
+{state.get('dm_notes', '（无）')[:500]}
 
 👥 全部角色：
 {chr(10).join(char_descs)}
@@ -1328,13 +1351,13 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
 
 请生成初始长期记忆JSON。"""
 
-        from services.ai_service import get_ai_client, get_default_model
+        from services.ai_service import get_ai_client
         client = get_ai_client()
         if not client:
             print("[LongTermMemory] ⚠️ AI client 不可用，跳过初始化")
             return
 
-        model = get_default_model()
+        model = "deepseek-v4-pro"
         print(f"[LongTermMemory] 🔄 初始化长期记忆 (model={model})...")
 
         response = await client.chat.completions.create(
@@ -1344,11 +1367,10 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_tokens=2500,
+            max_tokens=3000,
         )
 
         raw = response.choices[0].message.content or ""
-        print(f"[LongTermMemory] AI 初始化返回 ({len(raw)} chars):\n{raw[:500]}...")
 
         # Parse JSON
         json_str = raw.strip()
@@ -1363,14 +1385,13 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
                 "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
                 "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
                 "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+                "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
             }
-            print("=" * 60)
-            print(f"[LongTermMemory] ✅ 长期记忆已初始化")
-            print(f"  📋 global_note ({len(state['long_term_memory']['global_note'])} chars):")
-            print(f"     {state['long_term_memory']['global_note'][:300]}...")
-            print(f"  👤 player_memory keys: {list(state['long_term_memory']['player_memory'].keys())}")
-            print(f"  🎭 npc_memory keys: {list(state['long_term_memory']['npc_memory'].keys())}")
-            print("=" * 60)
+            pk = list(state['long_term_memory']['player_memory'].keys())
+            nk = list(state['long_term_memory']['npc_memory'].keys())
+            gn_len = len(state['long_term_memory']['global_note'])
+            ps = state['long_term_memory']['plot_suggestion'][:80]
+            print(f"[LongTermMemory] ✅ 初始化完成 | global_note={gn_len}chars plot_suggestion={ps} players={pk} npcs={nk}")
         else:
             print(f"[LongTermMemory] ⚠️ AI 初始化返回的不是合法字典: {type(new_memory)}")
 
@@ -1414,11 +1435,30 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
         characters_data = state.get("characters_data", [])
         char_names = [c.get("name", "") for c in characters_data if isinstance(c, dict) and c.get("name")]
 
-        system_prompt = f"""你是一个游戏记忆管理器。你需要维护长期记忆，跟踪以下三类信息：
+        # Get summaries from state
+        world_summary = state.get("world_summary", "")
+        plot_summary = state.get("plot_summary", "")
+        dm_notes = state.get("dm_notes", "")
 
-1. **player_memory** ({{"角色名": "str"}}): 记录每个玩家做了什么关键行动、知道了什么信息、不知道什么信息
-2. **npc_memory** ({{"NPC名": "str"}}): 记录每个NPC知道/不知道的信息，以及对每个玩家的态度（好感、中立、警惕、敌意等）
-3. **global_note** (str): 凝练全局重要事件、剧情转折点、关键发现
+        system_prompt = f"""你是一个游戏记忆管理器。你需要维护长期记忆，跟踪以下四类信息：
+
+1. **player_memory** ({{"角色名": "str"}}): 记录每个玩家做了什么关键行动、知道了什么信息、不知道什么信息。必须包含从游戏开始到现在的完整角色历史和当前状态。
+2. **npc_memory** ({{"NPC名": "str"}}): 记录每个NPC知道/不知道的信息，以及对每个玩家的态度（好感、中立、警惕、敌意等）。必须完整记录态度变化轨迹。
+3. **global_note** (str): ⚠️⚠️⚠️ 这是最重要的字段。你必须**详细记录从游戏开始到现在所有重要情节**，包括：
+   - 每个阶段的关键事件和剧情转折点
+   - 所有角色的重要行动和发现
+   - 当前世界的整体状态
+   - **绝对不能遗漏之前记录中的重要信息**。更新时必须在原有 global_note 基础上增量补充，不能缩水或丢失
+4. **plot_suggestion** (str): 基于当前情节进展和整体剧情方向，给出DM下一轮应该往什么方向引导的简要建议，避免偏离主线（50-150字）
+
+📖 本剧本世界观摘要（始终参考）：
+{world_summary[:600] if world_summary else '（暂无）'}
+
+📜 本剧本情节总览（始终参考）：
+{plot_summary[:600] if plot_summary else '（暂无）'}
+
+📝 DM主持人笔记（始终参考）：
+{dm_notes[:400] if dm_notes else '（暂无）'}
 
 当前已知角色: {', '.join(char_names) if char_names else '从对话中判断'}
 
@@ -1426,12 +1466,13 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
 
 {{
     "player_memory": {{
-        "角色名": "该角色做了什么、知道什么、不知道什么..."
+        "角色名": "该角色做了什么、知道什么、不知道什么...（必须包含历史记录+最新进展）"
     }},
     "npc_memory": {{
-        "NPC名": "知道/不知道什么。对各玩家态度：..."
+        "NPC名": "知道/不知道什么。对各玩家态度：...（必须包含态度变化全轨迹）"
     }},
-    "global_note": "凝练的全局重要事件..."
+    "global_note": "从游戏开始到现在所有重要情节的详细记录...（必须在原有基础上增量更新，不遗漏任何重要信息）",
+    "plot_suggestion": "DM下一轮引导方向建议（基于剧情进展和主线方向）"
 }}"""
 
         user_prompt = f"""当前长期记忆：
@@ -1442,13 +1483,13 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
 
 请更新长期记忆。"""
 
-        from services.ai_service import get_ai_client, get_default_model
+        from services.ai_service import get_ai_client
         client = get_ai_client()
         if not client:
             print("[LongTermMemory] ⚠️ AI client 不可用，跳过更新")
             return
 
-        model = get_default_model()
+        model = "deepseek-v4-pro"
         print(f"[LongTermMemory] 🔄 后台更新长期记忆 (model={model}, chat_len={len(chat)})...")
 
         response = await client.chat.completions.create(
@@ -1462,7 +1503,6 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
         )
 
         raw = response.choices[0].message.content or ""
-        print(f"[LongTermMemory] AI 原始返回 ({len(raw)} chars):\n{raw}")
 
         # Parse JSON from response (strip markdown code blocks if present)
         json_str = raw.strip()
@@ -1476,13 +1516,11 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
                 "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
                 "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
                 "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+                "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
             }
-            print("=" * 60)
-            print(f"[LongTermMemory] ✅ 长期记忆已更新")
-            print(f"  📋 global_note: {state['long_term_memory']['global_note'][:200]}...")
-            print(f"  👤 player_memory keys: {list(state['long_term_memory']['player_memory'].keys())}")
-            print(f"  🎭 npc_memory keys: {list(state['long_term_memory']['npc_memory'].keys())}")
-            print("=" * 60)
+            gn_len = len(state['long_term_memory']['global_note'])
+            ps = state['long_term_memory']['plot_suggestion'][:80]
+            print(f"[LongTermMemory] ✅ 已更新 | global_note={gn_len}chars plot_suggestion={ps}")
         else:
             print(f"[LongTermMemory] ⚠️ AI 返回的不是合法字典: {type(new_memory)}")
 
@@ -1554,12 +1592,20 @@ async def _retry_ai_opening_background(
     """Generate AI opening narration in background and emit as updated chat."""
     try:
         from game.nodes.opening_node import _generate_ai_opening
-        ai_text = await _generate_ai_opening(**prompt_data)
+        ai_result = await _generate_ai_opening(**prompt_data)
+        # _generate_ai_opening returns a dict: {"opening": str, "world_summary": str, "plot_summary": str}
+        ai_text = ai_result.get("opening", "") if isinstance(ai_result, dict) else str(ai_result)
+        world_s = ai_result.get("world_summary", "") if isinstance(ai_result, dict) else ""
+        plot_s = ai_result.get("plot_summary", "") if isinstance(ai_result, dict) else ""
 
         if ai_text and ai_text != new_state.get("opening_narration", ""):
             # Update state with better AI opening
             new_state["opening_narration"] = ai_text
             new_state["_opening_is_ai"] = True
+            if world_s:
+                new_state["world_summary"] = world_s
+            if plot_s:
+                new_state["plot_summary"] = plot_s
             room["state"] = new_state
 
             # Send as DM narration to all players

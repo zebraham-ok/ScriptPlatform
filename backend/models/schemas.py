@@ -124,6 +124,7 @@ class ProjectData(BaseModel):
     projectId: str = ""
     title: str = ""
     worldSetting: List[WorldBlock] = Field(default_factory=list)
+    dmNotes: str = ""
     characterParams: List[CharacterParamDefinition] = Field(default_factory=list)
     characters: GraphData = Field(default_factory=GraphData)
     locations: GraphData = Field(default_factory=GraphData)

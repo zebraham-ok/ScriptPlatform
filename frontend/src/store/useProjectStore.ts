@@ -35,6 +35,9 @@ interface ProjectStore {
   deleteWorldBlock: (id: string) => void;
   reorderWorldBlocks: (blocks: WorldBlock[]) => void;
 
+  // Actions - DM Notes (主持人笔记)
+  updateDmNotes: (notes: string) => void;
+
   // Actions - Character Params (from worldview)
   updateCharacterParams: (params: CharacterParamDefinition[]) => void;
 
@@ -160,6 +163,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const project = get().project;
     if (!project) return;
     set({ project: { ...project, worldSetting: blocks } });
+    get()._autoSave();
+  },
+
+  // DM Notes (主持人笔记)
+  updateDmNotes: (notes: string) => {
+    const project = get().project;
+    if (!project) return;
+    set({ project: { ...project, dmNotes: notes } });
     get()._autoSave();
   },
 
