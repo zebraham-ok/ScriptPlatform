@@ -139,7 +139,8 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
-export type PageType = 'character' | 'location' | 'worldview' | 'plot' | 'item' | 'mechanics'
+export type PageType = 'home'
+  | 'character' | 'location' | 'worldview' | 'plot' | 'item' | 'mechanics'
   | 'plaza' | 'game' | 'lobby' | 'role_select';
 
 export type SelectionType = 'node' | 'edge' | null;

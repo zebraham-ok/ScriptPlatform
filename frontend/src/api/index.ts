@@ -164,6 +164,11 @@ export async function getScriptDetail(scriptId: string) {
   return res.data;
 }
 
+export async function getScriptCover(scriptId: string) {
+  const res = await api.get(`/game/scripts/${scriptId}/cover`);
+  return res.data;
+}
+
 export async function publishScript(projectId: string) {
   const res = await api.post('/game/scripts', { projectId });
   return res.data;

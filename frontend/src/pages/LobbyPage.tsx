@@ -19,18 +19,12 @@ const MODE_OPTIONS = [
     title: '预设剧本模式',
     desc: '从广场选择一个已发布的剧本，体验精心编排的剧情。',
   },
-  {
-    key: 'import' as const,
-    icon: <UploadOutlined />,
-    title: '导入 JSON',
-    desc: '上传你自己的剧本 JSON 文件，体验自定义剧情。',
-  },
 ];
 
 const LobbyPage: React.FC = () => {
   const setCurrentPage = useProjectStore((s) => s.setCurrentPage);
   const { createRoom: createSocketRoom } = useGameStore();
-  const [mode, setMode] = useState<'sandbox' | 'script' | 'import' | null>(null);
+  const [mode, setMode] = useState<'sandbox' | 'script' | null>(null);
   const [worldview, setWorldview] = useState('');
   const [rolePrefs, setRolePrefs] = useState('');
   const [totalRounds, setTotalRounds] = useState(15);

@@ -72,7 +72,7 @@ const _doSave = debounce(
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   project: null,
   projectList: [],
-  currentPage: 'character',
+  currentPage: 'home',
   selectedElementId: null,
   selectedElementType: null,
   loading: false,

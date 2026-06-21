@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Layout, Button, Tabs, Space, Typography, Spin } from 'antd';
+import { Layout, Button, Tabs, Space, Typography, Spin, Dropdown } from 'antd';
 import {
   ExportOutlined,
   ImportOutlined,
@@ -11,8 +11,9 @@ import {
   SettingOutlined,
   LogoutOutlined,
   ThunderboltOutlined,
-  ShopOutlined,
   CloudUploadOutlined,
+  HomeOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import { useProjectStore } from '../../store/useProjectStore';
 import { exportFullProject } from '../../utils/export';
@@ -26,8 +27,7 @@ interface MainLayoutProps {
   children: React.ReactNode;
   onProjectSelect: () => void;
   onImportProject: () => void;
-  onGoToPlaza: () => void;
-  onQuickStart: () => void;
+  onGoToHome: () => void;
   onTryPlay: () => void;
   onPublishScript: () => void;
   loggedUser: { username: string; displayName: string } | null;
@@ -46,7 +46,7 @@ const tabItems = [
 
 const MainLayout: React.FC<MainLayoutProps> = ({
   children, onProjectSelect, onImportProject,
-  onGoToPlaza, onQuickStart, onTryPlay, onPublishScript,
+  onGoToHome, onTryPlay, onPublishScript,
   loggedUser, onLogout, hasProject,
 }) => {
   const { project, currentPage, setCurrentPage, loading } = useProjectStore();
@@ -104,21 +104,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({
               <UserOutlined /> {loggedUser.displayName}
             </Text>
           )}
-          {/* Game mode entry buttons */}
+          {/* Home button */}
           <Button
-            icon={<ThunderboltOutlined />}
+            icon={<HomeOutlined />}
             size="small"
-            style={{ color: '#f59e0b', borderColor: '#f59e0b' }}
-            onClick={onQuickStart}
+            onClick={onGoToHome}
           >
-            快速开局
-          </Button>
-          <Button
-            icon={<ShopOutlined />}
-            size="small"
-            onClick={onGoToPlaza}
-          >
-            广场
+            回到首页
           </Button>
           <Button
             icon={<ThunderboltOutlined />}
@@ -137,23 +129,33 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           >
             发布
           </Button>
-          <Button
-            icon={<ImportOutlined />}
-            size="small"
-            onClick={onImportProject}
+          {/* Import/Export dropdown */}
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'import',
+                  icon: <ImportOutlined />,
+                  label: '导入项目',
+                  onClick: onImportProject,
+                },
+                {
+                  key: 'export',
+                  icon: <ExportOutlined />,
+                  label: '导出完整项目',
+                  disabled: !project,
+                  onClick: () => project && exportFullProject(project),
+                },
+              ],
+            }}
+            trigger={['hover']}
           >
-            导入项目
-          </Button>
+            <Button icon={<SwapOutlined />} size="small">
+              导入导出
+            </Button>
+          </Dropdown>
           <Button onClick={onProjectSelect} size="small">
             项目列表
-          </Button>
-          <Button
-            icon={<ExportOutlined />}
-            size="small"
-            disabled={!project}
-            onClick={() => project && exportFullProject(project)}
-          >
-            导出完整项目
           </Button>
           <Button
             icon={<LogoutOutlined />}

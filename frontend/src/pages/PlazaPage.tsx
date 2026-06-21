@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Spin, message } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, HomeOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../store/useProjectStore';
 import { useGameStore } from '../store/useGameStore';
 import { listScripts, createGameRoom } from '../api';
@@ -58,6 +58,10 @@ const PlazaPage: React.FC = () => {
     setCurrentPage('lobby');
   };
 
+  const handleGoHome = () => {
+    setCurrentPage('home');
+  };
+
   const handleScriptClick = async (scriptId: string) => {
     setJoiningScriptId(scriptId);
     setLoading(true);
@@ -90,28 +94,36 @@ const PlazaPage: React.FC = () => {
   };
 
   return (
-    <div className="game-mode flex flex-col min-h-screen relative">
+    <div className="game-mode flex flex-col min-h-screen relative" style={{ background: '#0a0015' }}>
       <ParticleBackground />
-      {/* Hero Banner */}
-      <header className="relative z-10 flex-shrink-0 px-6 py-12 border-b border-slate-700/50 text-center">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent mb-3">
-          捕梦剧本广场
-        </h1>
-        <p className="text-slate-400 text-sm mb-6">
-          发现精彩剧本，开启沉浸式角色扮演冒险
-        </p>
-        <div className="flex items-center justify-center gap-3">
+      {/* Hero Banner — horizontal layout */}
+      <header className="relative z-10 flex-shrink-0 px-6 py-5 border-b border-white/5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4 min-w-0">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-violet-300 via-purple-300 to-violet-400 bg-clip-text text-transparent whitespace-nowrap">
+            捕梦剧本广场
+          </h1>
+          <p className="text-white/50 text-sm hidden sm:block truncate">
+            发现精彩剧本，开启沉浸式角色扮演冒险
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={handleQuickStart}
-            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-lg transition-all flex items-center gap-2"
+            onClick={handleGoHome}
+            className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 text-white/80 hover:text-white rounded-lg transition-all border border-white/10 flex items-center gap-1.5"
           >
-            <ThunderboltOutlined /> 快速开局
+            <HomeOutlined /> 回到首页
           </button>
           <button
             onClick={() => setCurrentPage('character')}
-            className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-all"
+            className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 text-white/80 hover:text-white rounded-lg transition-all border border-white/10"
           >
             创作剧本
+          </button>
+          <button
+            onClick={handleQuickStart}
+            className="px-4 py-2 text-sm bg-purple-500 hover:bg-purple-400 text-white font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-purple-500/20"
+          >
+            <ThunderboltOutlined /> 快速开局
           </button>
         </div>
       </header>
@@ -130,14 +142,14 @@ const PlazaPage: React.FC = () => {
       <div className="relative z-10 flex-1 overflow-y-auto p-6 game-scrollbar">
         <Spin spinning={loading}>
           {scripts.length === 0 && !loading ? (
-            <div className="text-center text-slate-500 mt-20">
+            <div className="text-center text-white/50 mt-20">
               <div className="text-5xl mb-4">📚</div>
               <p>暂无剧本</p>
               <p className="text-xs mt-1">去创作一个剧本并发布吧！</p>
             </div>
           ) : (
             <>
-              <p className="text-xs text-slate-600 mb-4">共 {total} 个剧本</p>
+              <p className="text-xs text-white/50 mb-4">共 {total} 个剧本</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {scripts.map((s) => (
                   <ScriptCard key={s.id} script={s} onClick={handleScriptClick} />
@@ -148,7 +160,7 @@ const PlazaPage: React.FC = () => {
                 <div className="text-center mt-6">
                   <button
                     onClick={loadMore}
-                    className="px-6 py-2 text-sm text-slate-400 hover:text-white border border-slate-700 rounded-lg transition-colors"
+                    className="px-6 py-2 text-sm text-white/60 hover:text-white border border-white/20 rounded-lg transition-colors hover:bg-white/5"
                   >
                     加载更多
                   </button>

@@ -85,7 +85,7 @@ const ParticleBackground: React.FC = () => {
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`;
+            ctx.strokeStyle = `rgba(180, 150, 255, ${alpha})`;
             ctx.lineWidth = 0.5;
             ctx.stroke();
           }
@@ -96,13 +96,13 @@ const ParticleBackground: React.FC = () => {
       for (const p of particles) {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(245, 158, 11, ${p.opacity})`;
+        ctx.fillStyle = `rgba(180, 143, 255, ${p.opacity})`;
         ctx.fill();
 
         // Subtle glow
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r * 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(245, 158, 11, ${p.opacity * 0.12})`;
+        ctx.fillStyle = `rgba(180, 143, 255, ${p.opacity * 0.12})`;
         ctx.fill();
       }
 

@@ -96,6 +96,36 @@ async def get_script_detail(
     raise HTTPException(status_code=404, detail="剧本不存在")
 
 
+@router.get("/game/scripts/{script_id}/cover")
+async def get_script_cover(
+    script_id: str,
+    _username: str = Depends(get_current_user),
+):
+    """Get the cover image for a script — auto-selects the first cached scene image."""
+    data = get_script_json(script_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="剧本不存在")
+
+    title = data.get("title", "")
+
+    # Get location nodes from the script
+    locations_graph = data.get("locations", {})
+    location_nodes = locations_graph.get("nodes", []) if isinstance(locations_graph, dict) else []
+
+    from services.image_service import scene_cache_exists, get_cached_scene_base64
+
+    # Try each location in order — return the first one with a cached scene image
+    for node in location_nodes:
+        if isinstance(node, dict):
+            loc_data = node.get("data", {}) if isinstance(node.get("data"), dict) else {}
+            location_name = node.get("label", "") or loc_data.get("name", "")
+            if location_name and scene_cache_exists(location_name, title):
+                b64 = get_cached_scene_base64(location_name, title)
+                return {"success": True, "data": {"coverUrl": b64}}
+
+    return {"success": True, "data": {"coverUrl": None}}
+
+
 @router.get("/game/scripts/{script_id}/json")
 async def download_script_json(
     script_id: str,

@@ -5,16 +5,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Game mode dark theme colors (from BUMENGweb-main)
+        // Game mode dark theme colors (matched to HomePage purple theme)
         game: {
-          bg: '#0f172a',        // slate-900
-          panel: '#1e293b',     // slate-800
-          border: '#334155',    // slate-700
-          text: '#e2e8f0',      // slate-200
-          muted: '#94a3b8',     // slate-400
-          accent: '#f59e0b',    // amber-500
-          accentHover: '#d97706', // amber-600
-          link: '#60a5fa',      // blue-400
+          bg: '#0a0015',           // deep purple-black
+          panel: 'rgba(255,255,255,0.05)',  // translucent card
+          border: 'rgba(255,255,255,0.08)',
+          text: '#e8d5ff',        // light lavender
+          muted: 'rgba(255,255,255,0.5)',
+          accent: '#b38fff',      // purple-400
+          accentHover: '#7c5cfc', // purple-500
+          link: '#60a5fa',        // blue-400
         },
       },
       animation: {
@@ -40,9 +40,9 @@ export default {
           '100%': { transform: 'rotate(360deg) scale(1)', opacity: '1' },
         },
         pulseRing: {
-          '0%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.4)' },
-          '70%': { boxShadow: '0 0 0 15px rgba(245, 158, 11, 0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(138, 43, 226, 0.4)' },
+          '70%': { boxShadow: '0 0 0 15px rgba(138, 43, 226, 0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(138, 43, 226, 0)' },
         },
         roundBannerIn: {
           '0%': { transform: 'translateY(-100%)', opacity: '0' },

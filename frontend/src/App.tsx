@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Modal, Input, List, Button, Space, Typography, Spin, App as AntdApp, Popconfirm, Form } from 'antd';
 import { PlusOutlined, DeleteOutlined, FolderOpenOutlined, UserOutlined, LockOutlined, ThunderboltOutlined, BookOutlined } from '@ant-design/icons';
 import MainLayout from './components/Layout/MainLayout';
+import HomePage from './pages/HomePage';
 import CharacterPage from './pages/CharacterPage';
 import LocationPage from './pages/LocationPage';
 import WorldviewPage from './pages/WorldviewPage';
@@ -45,6 +46,7 @@ const App: React.FC = () => {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [pendingPage, setPendingPage] = useState<'creator' | 'game' | null>(null);
 
   // --- Project selector state ---
   const [showSelector, setShowSelector] = useState(false);
@@ -55,15 +57,13 @@ const App: React.FC = () => {
   // Hidden file input for importing project JSON
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check for existing token on mount
+  // Check for existing token on mount (don't auto-show login on home page)
   useEffect(() => {
     const token = getToken();
     const user = getStoredUser();
     if (token && user) {
       setLoggedIn(true);
       setLoggedUser(user);
-    } else {
-      setShowLogin(true);
     }
   }, []);
 
@@ -116,7 +116,20 @@ const App: React.FC = () => {
       setLoggedIn(true);
       setLoggedUser({ username: result.username, displayName: result.displayName });
       setShowLogin(false);
+      setLoginUsername('');
+      setLoginPassword('');
       message.success(`欢迎，${result.displayName}！`);
+
+      // If login was triggered from home page, navigate to the pending target
+      if (pendingPage) {
+        if (pendingPage === 'creator') {
+          setShowSelector(true);
+          setCurrentPage('character');
+        } else {
+          setCurrentPage('plaza');
+        }
+        setPendingPage(null);
+      }
     } catch (e: any) {
       const msg = e?.response?.data?.detail || '登录失败';
       message.error(msg);
@@ -131,8 +144,9 @@ const App: React.FC = () => {
     setLoggedUser(null);
     clearProject();
     clearGame();
-    setShowLogin(true);
     setShowSelector(false);
+    setPendingPage(null);
+    setCurrentPage('home');
     message.info('已退出登录');
   };
 
@@ -215,13 +229,9 @@ const App: React.FC = () => {
   };
 
   // --- Game mode handlers ---
-  const handleGoToPlaza = () => {
+  const handleGoToHome = () => {
     clearProject();
-    setCurrentPage('plaza');
-  };
-
-  const handleQuickStart = () => {
-    setCurrentPage('lobby');
+    setCurrentPage('home');
   };
 
   const handleTryPlay = () => {
@@ -269,6 +279,23 @@ const App: React.FC = () => {
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'home':
+        return (
+          <HomePage
+            loggedIn={loggedIn}
+            loggedUser={loggedUser}
+            onNavigateToCreator={() => {
+              setShowSelector(true);
+              setCurrentPage('character');
+            }}
+            onNavigateToGame={() => setCurrentPage('plaza')}
+            onLoginClick={(targetPage?) => {
+              setPendingPage(targetPage ?? null);
+              setShowLogin(true);
+            }}
+            onLogout={handleLogout}
+          />
+        );
       case 'character':
         return <CharacterPage />;
       case 'location':
@@ -296,18 +323,20 @@ const App: React.FC = () => {
 
   // Game pages get their own layout (full dark theme)
   const isGamePage = ['plaza', 'lobby', 'game', 'role_select'].includes(currentPage);
+  const isHomePage = currentPage === 'home';
 
   return (
     <AntdApp>
-      {/* Editor mode (with MainLayout) or Game mode (full-page) */}
-      {isGamePage ? (
+      {/* Home page: standalone, full-screen */}
+      {isHomePage ? (
+        renderPage()
+      ) : isGamePage ? (
         renderPage()
       ) : (
         <MainLayout
           onProjectSelect={() => setShowSelector(true)}
           onImportProject={handleImportClick}
-          onGoToPlaza={handleGoToPlaza}
-          onQuickStart={handleQuickStart}
+          onGoToHome={handleGoToHome}
           onTryPlay={handleTryPlay}
           onPublishScript={handlePublishScript}
           loggedUser={loggedUser}
@@ -333,10 +362,15 @@ const App: React.FC = () => {
       <Modal
         title="用户登录"
         open={showLogin}
-        closable={false}
+        onCancel={() => {
+          setShowLogin(false);
+          setPendingPage(null);
+          setLoginUsername('');
+          setLoginPassword('');
+        }}
         footer={null}
         width={400}
-        maskClosable={false}
+        maskClosable={currentPage === 'home'}
       >
         <Form layout="vertical" onFinish={handleLogin}>
           <Form.Item label="用户名">

@@ -30,11 +30,11 @@
 
 /* --- DM 消息样式 --- */
 .dm-message {
-  @apply bg-slate-800 border-l-4 border-amber-500 p-4 rounded-r-lg my-2;
+  @apply bg-slate-800 border-l-4 border-purple-500 p-4 rounded-r-lg my-2;
 }
 
 .dm-message .dm-label {
-  @apply text-amber-400 font-bold text-sm mb-1;
+  @apply text-purple-400 font-bold text-sm mb-1;
 }
 
 /* --- 角色卡样式 --- */
@@ -43,7 +43,7 @@
 }
 
 .character-sheet .char-name {
-  @apply text-amber-400 text-lg font-bold;
+  @apply text-purple-400 text-lg font-bold;
 }
 
 .character-sheet .char-attr {
@@ -73,14 +73,14 @@
 }
 
 .dice-result {
-  @apply text-6xl font-bold text-amber-400;
-  text-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  @apply text-6xl font-bold text-purple-400;
+  text-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
   animation: diceRoll 0.6s ease-out;
 }
 
 /* --- 内联骰子面板（右侧栏内） --- */
 .dice-panel {
-  @apply bg-slate-800/80 border border-amber-500/20 rounded-lg p-3;
+  @apply bg-slate-800/80 border border-purple-500/20 rounded-lg p-3;
 }
 
 /* --- 内联投票面板（右侧栏内） --- */
@@ -91,20 +91,20 @@
 /* --- 回合切换横幅 --- */
 .round-banner {
   @apply fixed top-0 left-0 right-0 z-40 py-3 text-center font-bold text-lg;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #1e293b;
+  background: linear-gradient(135deg, #7c5cfc, #5b3fd4);
+  color: #fff;
   animation: roundBannerIn 0.5s ease-out;
 }
 
 /* --- 结局卡片 --- */
 .ending-card {
-  @apply bg-slate-800 border border-amber-500/30 rounded-xl p-8 max-w-lg mx-auto text-center;
+  @apply bg-slate-800 border border-purple-500/30 rounded-xl p-8 max-w-lg mx-auto text-center;
   animation: fadeSlideUp 0.8s ease-out;
 }
 
 .ending-card .ending-title {
   @apply text-3xl font-bold mb-4;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  background: linear-gradient(135deg, #b38fff, #e8d5ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -120,16 +120,16 @@
 }
 
 .dm-option-btn {
-  @apply px-3 py-1.5 text-sm rounded-full border border-amber-500/40 text-amber-300
-         bg-amber-500/5 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-200
+  @apply px-3 py-1.5 text-sm rounded-full border border-purple-500/40 text-purple-300
+         bg-purple-500/5 hover:bg-purple-500/15 hover:border-purple-400 hover:text-purple-200
          transition-colors cursor-pointer;
 }
 
 /* DM 选项按钮栏样式（聊天框上方，参考 BUMENGweb-main） */
 .dm-option-btn-bar {
-  @apply px-4 py-2 text-sm rounded-xl border border-amber-600/30
-         bg-black/30 backdrop-blur-md text-amber-200/85
-         hover:bg-amber-900/30 hover:border-amber-500/50 hover:text-amber-100
+  @apply px-4 py-2 text-sm rounded-xl border border-purple-600/30
+         bg-black/30 backdrop-blur-md text-purple-200/85
+         hover:bg-purple-900/30 hover:border-purple-500/50 hover:text-purple-100
          transition-all duration-200 cursor-pointer text-left;
 }
 
@@ -176,11 +176,11 @@
   width: 6px;
 }
 .game-scrollbar::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: rgba(180, 143, 255, 0.3);
   border-radius: 3px;
 }
 .game-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: rgba(180, 143, 255, 0.5);
 }
 
 /* ========================================
@@ -224,29 +224,77 @@
 }
 
 .game-mode .ant-btn-primary {
-  background: #f59e0b !important;
-  border-color: #f59e0b !important;
+  background: #7c5cfc !important;
+  border-color: #7c5cfc !important;
   color: #fff !important;
 }
 
 .game-mode .ant-btn-primary:hover {
-  background: #d97706 !important;
-  border-color: #d97706 !important;
+  background: #5b3fd4 !important;
+  border-color: #5b3fd4 !important;
   color: #fff !important;
 }
 
-.game-mode .ant-input {
-  background: #1e293b !important;
-  border-color: #475569 !important;
-  color: #e2e8f0 !important;
+.game-mode .ant-select-selector {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: #fff !important;
 }
 
-.game-mode .ant-input::placeholder {
-  color: #64748b !important;
+.game-mode .ant-select-selection-placeholder {
+  color: rgba(255,255,255,0.4) !important;
+}
+
+.game-mode .ant-select-selection-item {
+  color: #fff !important;
+}
+
+.game-mode .ant-select-arrow {
+  color: rgba(255,255,255,0.5) !important;
+}
+
+.game-mode .ant-select-clear {
+  color: rgba(255,255,255,0.4) !important;
+  background: transparent !important;
+}
+
+/* Select dropdown in game mode */
+.game-mode .ant-select-dropdown {
+  background: #1a1040 !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+.game-mode .ant-select-dropdown .ant-select-item {
+  color: rgba(255,255,255,0.8) !important;
+}
+
+.game-mode .ant-select-dropdown .ant-select-item-option-selected {
+  background: rgba(124, 92, 252, 0.2) !important;
+}
+
+.game-mode .ant-select-dropdown .ant-select-item-option-active {
+  background: rgba(255,255,255,0.06) !important;
+}
+
+.game-mode .ant-input-affix-wrapper {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+}
+
+.game-mode .ant-input-affix-wrapper .ant-input {
+  color: #fff !important;
+}
+
+.game-mode .ant-input-affix-wrapper .ant-input::placeholder {
+  color: rgba(255,255,255,0.4) !important;
+}
+
+.game-mode .ant-input-clear-icon {
+  color: rgba(255,255,255,0.4) !important;
 }
 
 .game-mode .ant-spin-dot-item {
-  background-color: #f59e0b !important;
+  background-color: #7c5cfc !important;
 }
 
 .game-mode .ant-spin-text {
