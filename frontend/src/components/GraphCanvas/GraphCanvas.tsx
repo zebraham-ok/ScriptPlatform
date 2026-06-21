@@ -34,6 +34,7 @@ const nodeTypes: NodeTypes = {
 };
 
 const mapNodeType: Record<PageType, string> = {
+  home: '',
   character: 'characterNode',
   location: 'locationNode',
   plot: 'checkpointNode',
@@ -47,6 +48,7 @@ const mapNodeType: Record<PageType, string> = {
 };
 
 const defaultLabels: Record<PageType, string> = {
+  home: '',
   character: '新人物',
   location: '新地点',
   plot: '新检查点',

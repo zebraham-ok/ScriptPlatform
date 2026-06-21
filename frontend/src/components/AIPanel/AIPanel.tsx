@@ -20,6 +20,7 @@ interface AIChatRecord {
 interface AIPanelProps {}
 
 const pageLabelMap: Record<PageType, string> = {
+  home: '',
   character: '人物生成',
   location: '地点描写',
   item: '物品生成',

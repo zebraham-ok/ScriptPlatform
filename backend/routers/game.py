@@ -83,19 +83,6 @@ async def list_scripts(
     )
 
 
-@router.get("/game/scripts/{script_id}")
-async def get_script_detail(
-    script_id: str,
-    _username: str = Depends(get_current_user),
-):
-    """Get script detail by ID."""
-    index = load_plaza_index()
-    for s in index.get("scripts", []):
-        if s["id"] == script_id:
-            return {"success": True, "data": ScriptCard(**s).model_dump()}
-    raise HTTPException(status_code=404, detail="剧本不存在")
-
-
 @router.get("/game/scripts/{script_id}/cover")
 async def get_script_cover(
     script_id: str,
@@ -104,7 +91,9 @@ async def get_script_cover(
     """Get the cover image for a script — auto-selects the first cached scene image."""
     data = get_script_json(script_id)
     if data is None:
-        raise HTTPException(status_code=404, detail="剧本不存在")
+        # Script JSON file not found on this server (may not have been deployed/transferred)
+        print(f"⚠️ [Cover] 剧本 JSON 不存在: {script_id}，返回空封面")
+        return {"success": True, "data": {"coverUrl": None}}
 
     title = data.get("title", "")
 
@@ -121,8 +110,10 @@ async def get_script_cover(
             location_name = node.get("label", "") or loc_data.get("name", "")
             if location_name and scene_cache_exists(location_name, title):
                 b64 = get_cached_scene_base64(location_name, title)
+                print(f"✅ [Cover] 命中封面: {script_id} -> {location_name}")
                 return {"success": True, "data": {"coverUrl": b64}}
 
+    print(f"📭 [Cover] 无缓存场景图: {script_id} (title={title}, locations={len(location_nodes)})")
     return {"success": True, "data": {"coverUrl": None}}
 
 
@@ -136,6 +127,19 @@ async def download_script_json(
     if data is None:
         raise HTTPException(status_code=404, detail="剧本 JSON 不存在")
     return {"success": True, "data": data}
+
+
+@router.get("/game/scripts/{script_id}")
+async def get_script_detail(
+    script_id: str,
+    _username: str = Depends(get_current_user),
+):
+    """Get script detail by ID."""
+    index = load_plaza_index()
+    for s in index.get("scripts", []):
+        if s["id"] == script_id:
+            return {"success": True, "data": ScriptCard(**s).model_dump()}
+    raise HTTPException(status_code=404, detail="剧本不存在")
 
 
 @router.post("/game/scripts", response_model=PublishScriptResponse)

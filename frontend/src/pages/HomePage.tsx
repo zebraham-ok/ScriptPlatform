@@ -76,7 +76,7 @@ const HomePage: React.FC<HomePageProps> = ({
           <Button
             type="text"
             icon={<LoginOutlined />}
-            onClick={onLoginClick}
+            onClick={() => onLoginClick()}
             style={styles.loginBtn}
           >
             登录
