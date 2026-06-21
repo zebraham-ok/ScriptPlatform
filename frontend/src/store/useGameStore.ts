@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import type {
   GameRoomInfo, PlayerInfo, ChatMessage, SceneInfo,
   DiceResult, PendingVote, EndingData, TurnInfo, GameStage, RoleDetail,
+  TTSAudioPayload,
 } from '../types';
 import {
   connectSocket, disconnectSocket, getSocket,
@@ -61,6 +62,12 @@ interface GameStore {
   pendingRoomId: string | null;
   isCreator: boolean;  // whether current user created this room
 
+  // ---- TTS ----
+  ttsEnabled: boolean;
+  ttsPlaying: boolean;
+  audioQueue: TTSAudioPayload[];
+  currentTTSAudio: TTSAudioPayload | null;
+
   // === Actions ===
 
   // Connection
@@ -86,6 +93,13 @@ interface GameStore {
   selectDMOptionByText: (optionText: string) => void;
   skipTurn: () => void;
   extendTurn: () => void;
+
+  // TTS
+  toggleTTS: () => void;
+  _enqueueTTSAudio: (payload: TTSAudioPayload) => void;
+  _dequeueTTSAudio: () => void;
+  _setTTSPlaying: (playing: boolean) => void;
+  _setCurrentTTSAudio: (audio: TTSAudioPayload | null) => void;
 
   // Internal setters (called by socket event listeners)
   _setSocketConnected: (connected: boolean) => void;
@@ -134,6 +148,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   showNicknameModal: false,
   pendingRoomId: null,
   isCreator: false,
+
+  // TTS
+  ttsEnabled: true,
+  ttsPlaying: false,
+  audioQueue: [],
+  currentTTSAudio: null,
 
   // ---- Connection ----
   connectAndJoin: (roomId: string, nickname: string, isCreator: boolean, createData?: any) => {
@@ -334,8 +354,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       loading: false,
       error: null,
       isCreator: false,
+      ttsEnabled: true,
+      ttsPlaying: false,
+      audioQueue: [],
+      currentTTSAudio: null,
     });
   },
+
+  // ---- TTS Actions ----
+  toggleTTS: () => set((s) => ({ ttsEnabled: !s.ttsEnabled })),
+  _enqueueTTSAudio: (payload) =>
+    set((s) => ({ audioQueue: [...s.audioQueue, payload] })),
+  _dequeueTTSAudio: () =>
+    set((s) => {
+      const [_, ...rest] = s.audioQueue;
+      return { audioQueue: rest };
+    }),
+  _setTTSPlaying: (playing) => set({ ttsPlaying: playing }),
+  _setCurrentTTSAudio: (audio) => set({ currentTTSAudio: audio }),
 }));
 
 // ---- Socket Event Binding ----
@@ -366,6 +402,7 @@ function _bindSocketEvents(
     socket.off('join_error');
     socket.off('role_update');
     socket.off('all_ready');
+    socket.off('tts_audio');
     socket.off('turn_start');
     socket.off('turn_skip');
     socket.off('turn_timeout');
@@ -753,6 +790,15 @@ function _bindSocketEvents(
         timestamp: Date.now(),
       };
       set((s: GameStore) => ({ ...s, messages: _addMessage(s.messages, msg), dmThinking: true }));
+    });
+
+    // ---- TTS Audio ----
+    socket.on('tts_audio', (data: TTSAudioPayload) => {
+      const store = get() as GameStore;
+      if (store.ttsEnabled) {
+        store._enqueueTTSAudio(data);
+      }
+      console.log('[Socket] tts_audio received:', data.text?.substring(0, 50));
     });
 
     socket.on('disconnect', () => {

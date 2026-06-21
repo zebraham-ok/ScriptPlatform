@@ -201,8 +201,25 @@ class AIFillFieldRequest(BaseModel):
     field_name: str
     existing_content: str = ""
     node_type: str = ""
+    node_data: str = ""
 
 
 class AIFillFieldResponse(BaseModel):
     content: str
     analysis: str = ""
+
+
+# === TTS ===
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "default"
+    rate: str = "+0%"
+    pitch: str = "+0Hz"
+    style: Optional[str] = None
+
+
+class TTSResponse(BaseModel):
+    audio_base64: str = ""
+    success: bool = True
+    error: Optional[str] = None

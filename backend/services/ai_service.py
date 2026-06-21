@@ -391,7 +391,9 @@ def modify_project(
     raise RuntimeError("所有 API 均不可用。\n" + "\n".join(errors))
 
 
-FILL_FIELD_SYSTEM_PROMPT = """你是一个专业的剧本创作助手。请根据项目的完整JSON数据，为指定字段填充或扩充内容。
+FILL_FIELD_SYSTEM_PROMPT = """你是一个专业的剧本创作助手。请根据项目整体信息，为指定节点/元素的某个字段填充或扩充内容。
+
+注意：你填写的内容属于"故事档案/设定档案"，并非主持词或叙事文本。因此应当简明扼要、清晰明确，使用平实的描述性语言，不需要过分文学化或煽情。
 
 请返回一个严格的JSON对象，格式如下：
 {
@@ -399,17 +401,147 @@ FILL_FIELD_SYSTEM_PROMPT = """你是一个专业的剧本创作助手。请根�
   "content": "建议填充的内容"
 }"""
 
-FILL_FIELD_USER_TEMPLATE = """【项目完整JSON】
-{project_json}
+FILL_FIELD_USER_TEMPLATE = """【项目文本摘要（含全部节点、世界观、机制等信息，已省略无关的ID等字段）】
+{project_text}
+
+【需要填充的对象完整信息】
+{node_data}
 
 【需要填充的字段】
 字段名：{field_name}
 元素类型：{node_type}
 
-【现有内容】
+【该字段现有内容】
 {existing_content}
 
 请根据以上信息，为"{field_name}"字段生成合适的填充内容。如果现有内容不为空，请在现有内容基础上进行扩充和润色，保留原有的核心信息。"""
+
+
+def _compress_project_json(project_data: dict) -> str:
+    """Convert project JSON to a human-readable text summary, stripping meaningless tech fields (IDs, positions, etc.)."""
+    lines = []
+
+    # Worldview
+    world_setting = project_data.get("worldSetting", [])
+    if world_setting:
+        lines.append("=== 世界观 ===")
+        for block in world_setting:
+            title = block.get("title", "")
+            content = block.get("content", "")
+            if content.strip():
+                lines.append(f"【{title}】\n{content.strip()}")
+            elif title.strip():
+                lines.append(f"【{title}】（内容为空）")
+
+    # Characters
+    chars = project_data.get("characters", {})
+    char_nodes = chars.get("nodes", [])
+    char_edges = chars.get("edges", [])
+    if char_nodes:
+        lines.append("\n=== 角色列表 ===")
+        for node in char_nodes:
+            data = node.get("data", {})
+            nlabel = data.get("name") or node.get("label", "")
+            lines.append(f"\n▸ 角色：{nlabel}")
+            if data.get("gender"):
+                lines.append(f"  性别：{data['gender']}")
+            if data.get("age") is not None:
+                lines.append(f"  年龄：{data['age']}")
+            if data.get("appearance"):
+                lines.append(f"  外貌：{data['appearance'].strip()}")
+            if data.get("personality"):
+                lines.append(f"  性格：{data['personality'].strip()}")
+            if data.get("motivation"):
+                lines.append(f"  动机：{data['motivation'].strip()}")
+            if data.get("description"):
+                lines.append(f"  描述：{data['description'].strip()}")
+            attr = data.get("attributes") or {}
+            if attr:
+                lines.append(f"  属性：{json.dumps(attr, ensure_ascii=False)}")
+        if char_edges:
+            lines.append("  角色关系：")
+            for edge in char_edges:
+                elabel = edge.get("label", "") or edge.get("data", {}).get("description", "")
+                if elabel.strip():
+                    lines.append(f"    - {elabel.strip()}")
+
+    # Locations
+    locs = project_data.get("locations", {})
+    loc_nodes = locs.get("nodes", [])
+    if loc_nodes:
+        lines.append("\n=== 地点列表 ===")
+        for node in loc_nodes:
+            data = node.get("data", {})
+            nlabel = data.get("name") or node.get("label", "")
+            lines.append(f"\n▸ 地点：{nlabel}")
+            if data.get("locationType"):
+                lines.append(f"  类型：{data['locationType']}")
+            if data.get("terrain"):
+                lines.append(f"  地形：{data['terrain'].strip()}")
+            if data.get("description"):
+                lines.append(f"  描述：{data['description'].strip()}")
+
+    # Items
+    items = project_data.get("items", {})
+    item_nodes = items.get("nodes", [])
+    if item_nodes:
+        lines.append("\n=== 物品列表 ===")
+        for node in item_nodes:
+            data = node.get("data", {})
+            nlabel = data.get("name") or node.get("label", "")
+            lines.append(f"\n▸ 物品：{nlabel}")
+            if data.get("function"):
+                lines.append(f"  功能：{data['function'].strip()}")
+            if data.get("acquisitionMethod"):
+                lines.append(f"  获取方式：{data['acquisitionMethod'].strip()}")
+            if data.get("description"):
+                lines.append(f"  描述：{data['description'].strip()}")
+
+    # Plot
+    plot = project_data.get("plot", {})
+    plot_nodes = plot.get("graph", {}).get("nodes", [])
+    plot_edges = plot.get("graph", {}).get("edges", [])
+    if plot_nodes:
+        lines.append("\n=== 情节节点列表 ===")
+        for node in plot_nodes:
+            data = node.get("data", {})
+            nlabel = data.get("name") or node.get("label", "")
+            lines.append(f"\n▸ 情节：{nlabel}")
+            if data.get("sceneDescription"):
+                lines.append(f"  场景描述：{data['sceneDescription'].strip()}")
+            if data.get("description"):
+                lines.append(f"  描述：{data['description'].strip()}")
+            if data.get("conditions"):
+                lines.append(f"  条件：{', '.join(data['conditions'])}")
+        if plot_edges:
+            lines.append("  情节连接：")
+            for edge in plot_edges:
+                elabel = edge.get("label", "") or edge.get("data", {}).get("description", "")
+                if elabel.strip():
+                    lines.append(f"    - {elabel.strip()}")
+
+    # Mechanics
+    mechanics = project_data.get("mechanics", {})
+    checks = mechanics.get("checks", [])
+    votes = mechanics.get("votes", [])
+    if checks:
+        lines.append("\n=== 检定列表 ===")
+        for c in checks:
+            lines.append(f"\n▸ 检定：{c.get('name', '')}")
+            if c.get("description"):
+                lines.append(f"  描述：{c['description'].strip()}")
+            if c.get("checkTarget"):
+                lines.append(f"  检定目标：{c['checkTarget']}")
+            if c.get("difficulty") is not None:
+                lines.append(f"  难度：{c['difficulty']}")
+    if votes:
+        lines.append("\n=== 投票列表 ===")
+        for v in votes:
+            lines.append(f"\n▸ 投票：{v.get('name', '')}")
+            if v.get("options"):
+                lines.append(f"  选项：{', '.join(v['options'])}")
+
+    return "\n".join(lines) if lines else "(项目暂无内容)"
 
 
 def fill_field(
@@ -421,11 +553,14 @@ def fill_field(
     field_name = context.get("field_name", "")
     existing_content = context.get("existing_content", "")
     node_type = context.get("node_type", "")
+    node_data_str = context.get("node_data", "")
 
-    project_json = json.dumps(project_data, ensure_ascii=False, indent=2)
+    # Compress project to text summary (strip IDs and meaningless fields)
+    project_text = _compress_project_json(project_data)
 
     full_prompt = FILL_FIELD_USER_TEMPLATE.format(
-        project_json=project_json,
+        project_text=project_text,
+        node_data=node_data_str or "(该对象暂无详细数据)",
         field_name=field_name,
         node_type=node_type,
         existing_content=existing_content or "(空)",

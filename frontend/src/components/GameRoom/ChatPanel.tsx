@@ -2,14 +2,21 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import type { ChatMessage } from '../../types';
 import TypewriterText from './TypewriterText';
+import { useTTSPlayer } from '../../hooks/useTTSPlayer';
 
 const ChatPanel: React.FC = () => {
   const messages = useGameStore((s) => s.messages);
   const dmThinking = useGameStore((s) => s.dmThinking);
   const playerId = useGameStore((s) => s.playerId);
+  const ttsEnabled = useGameStore((s) => s.ttsEnabled);
+  const toggleTTS = useGameStore((s) => s.toggleTTS);
+  const ttsPlaying = useGameStore((s) => s.ttsPlaying);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 跟踪每个消息ID的打字完成状态
   const [completedMessages, setCompletedMessages] = useState<Set<string>>(new Set());
+
+  // Initialize TTS player (handles queue auto-playback)
+  const { stop: stopTTS } = useTTSPlayer();
 
   // Identify the latest DM message for typewriter effect
   const lastDMIndex = (() => {
@@ -80,7 +87,7 @@ const ChatPanel: React.FC = () => {
             {isLatestDM ? (
               <TypewriterText
                 text={msg.content}
-                speed={25}
+                speed={80}
                 onComplete={() => handleTypingComplete(msg.id)}
               />
             ) : (
@@ -125,7 +132,7 @@ const ChatPanel: React.FC = () => {
             {isLatestDM ? (
               <TypewriterText
                 text={msg.content}
-                speed={25}
+                speed={80}
                 onComplete={() => handleTypingComplete(msg.id)}
               />
             ) : (
@@ -191,8 +198,24 @@ const ChatPanel: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-slate-900/60 backdrop-blur-sm">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-700/30">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-700/30 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-200">📜 游戏剧情</h3>
+        <button
+          onClick={toggleTTS}
+          title={ttsEnabled ? '关闭语音播报' : '开启语音播报'}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+            ttsEnabled
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+              : 'bg-slate-700/30 text-slate-500 border border-slate-600/30 hover:bg-slate-700/50'
+          }`}
+        >
+          {ttsPlaying ? (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          ) : (
+            <span>{ttsEnabled ? '🔊' : '🔇'}</span>
+          )}
+          <span>{ttsEnabled ? '语音' : '静音'}</span>
+        </button>
       </div>
 
       {/* Messages */}

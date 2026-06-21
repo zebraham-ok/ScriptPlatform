@@ -3,6 +3,8 @@ node_modules/
 BUMENGweb-main/
 doc/
 backend/image_cache/
+backend/resource/
+backend/tts_cache/
 
 # Build output
 frontend/build/

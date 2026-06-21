@@ -18,6 +18,10 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
   const indexRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
+  // Use refs for callbacks to avoid resetting the effect on parent re-renders
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const prevTextRef = useRef(text);
 
   const finishTyping = useCallback(() => {
     if (completedRef.current) return;
@@ -28,18 +32,28 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
     }
     setDisplayed(text);
     setIsTyping(false);
-    onComplete?.();
-  }, [text, onComplete]);
+    onCompleteRef.current?.();
+  }, [text]);
 
   useEffect(() => {
-    // Reset when text changes
-    indexRef.current = 0;
-    completedRef.current = false;
-    setDisplayed('');
-    setIsTyping(true);
+    // Only reset when text value actually changes (not on parent re-renders)
+    const textChanged = prevTextRef.current !== text;
+    prevTextRef.current = text;
+
+    if (textChanged) {
+      indexRef.current = 0;
+      completedRef.current = false;
+      setDisplayed('');
+      setIsTyping(true);
+    }
 
     if (!text) {
       setIsTyping(false);
+      return;
+    }
+
+    // If text didn't change and we're already typing, don't restart
+    if (!textChanged && indexRef.current > 0) {
       return;
     }
 

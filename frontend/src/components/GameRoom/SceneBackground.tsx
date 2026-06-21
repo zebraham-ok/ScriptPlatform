@@ -73,7 +73,7 @@ const SceneBackground: React.FC = () => {
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
-            opacity: transitioning ? 0 : 0.65,
+            opacity: transitioning ? 0 : 0.9,
             transition: 'opacity 1.2s ease-in-out',
           }}
         />
@@ -87,13 +87,13 @@ const SceneBackground: React.FC = () => {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
-          opacity: transitioning ? 0.65 : (currentImageUrl ? 0.65 : 0),
+          opacity: transitioning ? 0.9 : (currentImageUrl ? 0.9 : 0),
           transition: 'opacity 1.2s ease-in-out',
         }}
       />
 
       {/* 深色渐变遮罩层（上下深、中间浅，确保文字可读） */}
-      <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#0a0a1a]/80 via-[#0a0a1a]/15 to-[#0a0a1a]/80 pointer-events-none" />
+      <div className="absolute inset-0 z-[1] bg-gradient-to-b from-[#0a0a1a]/55 via-[#0a0a1a]/5 to-[#0a0a1a]/55 pointer-events-none" />
 
       {/* 场景信息叠加层 — 带 fadeSlideUp 动效 */}
       <div

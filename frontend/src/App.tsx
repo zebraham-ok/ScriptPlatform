@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Modal, Input, List, Button, Space, Typography, Spin, App as AntdApp, Popconfirm, Form } from 'antd';
-import { PlusOutlined, DeleteOutlined, FolderOpenOutlined, UserOutlined, LockOutlined, ThunderboltOutlined, BookOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, FolderOpenOutlined, EditOutlined, CheckOutlined, CloseOutlined, UserOutlined, LockOutlined, ThunderboltOutlined, BookOutlined } from '@ant-design/icons';
 import MainLayout from './components/Layout/MainLayout';
 import HomePage from './pages/HomePage';
 import CharacterPage from './pages/CharacterPage';
@@ -32,6 +32,7 @@ const App: React.FC = () => {
     setProject,
     clearProject,
     setCurrentPage,
+    renameProject,
   } = useProjectStore();
 
   const gameStore = useGameStore();
@@ -53,6 +54,10 @@ const App: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [loadingList, setLoadingList] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // --- Rename state ---
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
 
   // Hidden file input for importing project JSON
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -185,6 +190,32 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRenameStart = (id: string, currentTitle: string) => {
+    setRenamingId(id);
+    setRenameTitle(currentTitle);
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingId(null);
+    setRenameTitle('');
+  };
+
+  const handleRenameConfirm = async (id: string) => {
+    const trimmed = renameTitle.trim();
+    if (!trimmed) {
+      message.warning('标题不能为空');
+      return;
+    }
+    try {
+      await renameProject(id, trimmed);
+      setRenamingId(null);
+      setRenameTitle('');
+      message.success('重命名成功');
+    } catch (e) {
+      message.error('重命名失败');
+    }
+  };
+
   // --- Import project ---
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -309,7 +340,14 @@ const App: React.FC = () => {
       case 'mechanics':
         return <MechanicsPage />;
       case 'plaza':
-        return <PlazaPage />;
+        return (
+          <PlazaPage
+            onNavigateToCreator={() => {
+              setShowSelector(true);
+              setCurrentPage('character');
+            }}
+          />
+        );
       case 'lobby':
         return <LobbyPage />;
       case 'game':
@@ -326,7 +364,7 @@ const App: React.FC = () => {
   const isHomePage = currentPage === 'home';
 
   return (
-    <AntdApp>
+    <>
       {/* Home page: standalone, full-screen */}
       {isHomePage ? (
         renderPage()
@@ -434,36 +472,76 @@ const App: React.FC = () => {
           <List
             dataSource={projectList}
             locale={{ emptyText: '暂无项目' }}
-            renderItem={(item) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="open"
-                    type="link"
-                    icon={<FolderOpenOutlined />}
-                    onClick={() => handleSelect(item.id)}
-                  >
-                    打开
-                  </Button>,
-                  <Popconfirm
-                    key="delete"
-                    title="确认删除此项目?"
-                    onConfirm={() => handleDelete(item.id)}
-                  >
-                    <Button type="link" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={item.title}
-                  description={`ID: ${item.id} | 更新: ${item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'}`}
-                />
-              </List.Item>
-            )}
+            renderItem={(item) => {
+              const isRenaming = renamingId === item.id;
+              return (
+                <List.Item
+                  actions={
+                    isRenaming
+                      ? [
+                          <Button
+                            key="confirm"
+                            type="link"
+                            icon={<CheckOutlined />}
+                            style={{ color: '#52c41a' }}
+                            onClick={() => handleRenameConfirm(item.id)}
+                          />,
+                          <Button
+                            key="cancel"
+                            type="link"
+                            icon={<CloseOutlined />}
+                            danger
+                            onClick={handleRenameCancel}
+                          />,
+                        ]
+                      : [
+                          <Button
+                            key="open"
+                            type="link"
+                            icon={<FolderOpenOutlined />}
+                            onClick={() => handleSelect(item.id)}
+                          >
+                            打开
+                          </Button>,
+                          <Button
+                            key="rename"
+                            type="link"
+                            icon={<EditOutlined />}
+                            onClick={() => handleRenameStart(item.id, item.title)}
+                          >
+                            重命名
+                          </Button>,
+                          <Popconfirm
+                            key="delete"
+                            title="确认删除此项目?"
+                            onConfirm={() => handleDelete(item.id)}
+                          >
+                            <Button type="link" danger icon={<DeleteOutlined />} />
+                          </Popconfirm>,
+                        ]
+                  }
+                >
+                  {isRenaming ? (
+                    <Input
+                      value={renameTitle}
+                      onChange={(e) => setRenameTitle(e.target.value)}
+                      onPressEnter={() => handleRenameConfirm(item.id)}
+                      autoFocus
+                      style={{ maxWidth: 300 }}
+                    />
+                  ) : (
+                    <List.Item.Meta
+                      title={item.title}
+                      description={`ID: ${item.id} | 更新: ${item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'}`}
+                    />
+                  )}
+                </List.Item>
+              );
+            }}
           />
         </Spin>
       </Modal>
-    </AntdApp>
+    </>
   );
 };
 

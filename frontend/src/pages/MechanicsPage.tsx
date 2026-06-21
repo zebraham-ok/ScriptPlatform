@@ -66,11 +66,21 @@ const MechanicsPage: React.FC = () => {
       setFillingFields((prev) => new Set(prev).add(key));
       try {
         const existingContent = String((check as any)[fieldName] || '');
+        const nodeDataStr = `【所属检定完整信息】
+检定名称：${check.name || '未命名'}
+触发条件：${check.triggerCondition || '(空)'}
+检定目标属性：${check.checkTarget || '(空)'}
+难度：${check.difficulty ?? '(未设)'}
+描述：${check.description || '(空)'}
+成功效果：${check.successEffect || '(空)'}
+失败效果：${check.failureEffect || '(空)'}`;
+
         const result = await aiFillField({
           project_id: project.projectId,
           field_name: `检定「${check.name || '未命名'}」- ${fieldLabel}`,
           existing_content: existingContent,
           node_type: 'mechanics_check',
+          node_data: nodeDataStr,
         });
         handleUpdateCheck(check.id, { [fieldName]: result.content } as Partial<CheckDefinition>);
         message.success(`「${fieldLabel}」填充完成`);
@@ -157,11 +167,17 @@ const MechanicsPage: React.FC = () => {
         const existingContent = typeof (vote as any)[fieldName] === 'string'
           ? String((vote as any)[fieldName] || '')
           : JSON.stringify((vote as any)[fieldName] || '');
+        const nodeDataStr = `【所属投票完整信息】
+投票名称：${vote.name || '未命名'}
+参与条件：${vote.participationCondition || '(空)'}
+选项列表：${vote.options?.length ? vote.options.join('、') : '(空)'}`;
+
         const result = await aiFillField({
           project_id: project.projectId,
           field_name: `投票「${vote.name || '未命名'}」- ${fieldLabel}`,
           existing_content: existingContent,
           node_type: 'mechanics_vote',
+          node_data: nodeDataStr,
         });
         handleUpdateVote(vote.id, { [fieldName]: result.content } as Partial<VoteDefinition>);
         message.success(`「${fieldLabel}」填充完成`);

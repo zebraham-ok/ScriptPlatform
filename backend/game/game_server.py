@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, Set, List
 import socketio
 from game.state import GameState
 from game.graph import create_room_graph
+from services.tts_service import generate_tts_for_chat
 
 
 # ========================================
@@ -786,6 +787,9 @@ async def start_game(sid: str, data: dict):
             chat.append(dm_opening_msg)
             new_state["chat_history"] = chat
 
+            # TTS for opening narration
+            asyncio.create_task(_generate_tts_audio(room_id, opening_narration, "dm"))
+
         # Send available roles to all players (immediately, before AI opening)
         print(f"[GameServer] Emitting role_update: availableRoles={available_roles}, "
               f"roleDetails count={len(role_details)}")
@@ -822,6 +826,9 @@ async def start_game(sid: str, data: dict):
             chat = list(new_state.get("chat_history", []))
             chat.append(dm_opening_msg)
             new_state["chat_history"] = chat
+
+            # TTS for opening narration
+            asyncio.create_task(_generate_tts_audio(room_id, opening_narration, "dm"))
 
         # Emit initial scene info immediately (before image is ready)
         scene_desc = new_state.get("scene_description", "")
@@ -1052,6 +1059,9 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
             "timestamp": datetime.now().isoformat(),
         }, room=room_id)
 
+        # TTS for check announcement
+        asyncio.create_task(_generate_tts_audio(room_id, announce, "dm"))
+
         # ── ② Dice roll animation (frontend DiceAnimation) ──
         await sio.emit("dice_roll", {
             "result": dice_result,
@@ -1085,6 +1095,9 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
                 "isPostCheck": True,
                 "timestamp": datetime.now().isoformat(),
             }, room=room_id)
+
+            # TTS for post-check DM narration
+            asyncio.create_task(_generate_tts_audio(room_id, dm_resp, "dm"))
     else:
         # No check — normal DM narration (current behavior)
         if dm_resp:
@@ -1097,6 +1110,9 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
                 "options": dm_options if dm_options else None,
                 "timestamp": datetime.now().isoformat(),
             }, room=room_id)
+
+            # TTS for DM narration
+            asyncio.create_task(_generate_tts_audio(room_id, dm_resp, "dm"))
 
     # Private messages
     private_msgs = new_state.get("private_messages", {})
@@ -1553,6 +1569,10 @@ async def _retry_ai_opening_background(
                 "content": ai_text,
                 "timestamp": datetime.now().isoformat(),
             }, room=room_id)
+
+            # TTS for background opening
+            asyncio.create_task(_generate_tts_audio(room_id, ai_text, "dm"))
+
             print(f"[GameServer] Background AI opening generated: {len(ai_text)} chars")
     except Exception as e:
         print(f"[GameServer] Background AI opening failed: {e}")
@@ -1702,6 +1722,30 @@ async def _generate_scene_image_for_node(
         print(f"❌ [Scene] 场景图片生成异常: {e}")
         import traceback
         traceback.print_exc()
+
+
+# ========================================
+#  TTS Audio Generation (fire-and-forget)
+# ========================================
+
+async def _generate_tts_audio(room_id: str, content: str, speaker: str = "dm"):
+    """
+    Background task: generate TTS audio via edge-tts and emit to frontend.
+    Runs as fire-and-forget to avoid blocking the game loop.
+    """
+    try:
+        b64 = await generate_tts_for_chat(content, speaker=speaker)
+        if b64:
+            await sio.emit("tts_audio", {
+                "audio": b64,
+                "text": content[:100],
+                "messageId": f"tts_{uuid.uuid4().hex[:8]}",
+            }, room=room_id)
+            print(f"[TTS] 🎤 语音已发送到房间 {room_id} ({len(b64)} bytes base64)")
+        else:
+            print(f"[TTS] ⚠️ TTS 生成返回空 (room={room_id})")
+    except Exception as e:
+        print(f"[TTS] ❌ 语音生成异常: {e}")
 
 
 # ========================================

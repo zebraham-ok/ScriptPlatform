@@ -139,6 +139,7 @@ export async function aiFillField(data: {
   field_name: string;
   existing_content: string;
   node_type: string;
+  node_data: string;
 }) {
   const res = await api.post('/ai/fill-field', data);
   return res.data;

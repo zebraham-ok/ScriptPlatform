@@ -110,11 +110,16 @@ const WorldviewPage: React.FC = () => {
       if (!block) return;
       setFillingBlockId(blockId);
       try {
+        const nodeDataStr = `【所属世界观模块信息】
+标题：${block.title || '未命名'}
+现有内容：${block.content || '(空)'}`;
+
         const result = await aiFillField({
           project_id: project.projectId,
           field_name: block.title || '世界观栏目',
           existing_content: block.content,
           node_type: 'worldview',
+          node_data: nodeDataStr,
         });
         updateWorldBlock(blockId, { content: result.content });
         if (result.analysis) {

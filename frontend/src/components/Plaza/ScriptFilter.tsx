@@ -36,7 +36,11 @@ const ScriptFilter: React.FC<ScriptFilterProps> = ({
         className="!w-28 [&_.ant-select-selector]:!bg-white/10 [&_.ant-select-selector]:!border-white/20 [&_.ant-select-selection-placeholder]:!text-white/40 [&_.ant-select-selection-item]:!text-white [&_.ant-select-arrow]:!text-white/50"
         size="small"
         allowClear
-        popupClassName="!bg-[#1a1040] !border !border-white/10 [&_.ant-select-item]:!text-white/80 [&_.ant-select-item-option-selected]:!bg-purple-500/20"
+        classNames={{
+          popup: {
+            root: "!bg-[#1a1040] !border !border-white/10 [&_.ant-select-item]:!text-white/80 [&_.ant-select-item-option-selected]:!bg-purple-500/20"
+          }
+        }}
         options={TAG_OPTIONS.map((t) => ({ value: t, label: t }))}
       />
       <div className="flex gap-1 ml-auto">

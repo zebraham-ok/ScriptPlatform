@@ -338,18 +338,88 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
   // --- AI field fill ---
   const [aiLoadingFields, setAiLoadingFields] = useState<Set<string>>(new Set());
 
+  // Helper: serialize a node's text data to a human-readable string (omit IDs, positions, etc.)
+  const nodeToText = useCallback((node: any, labelType: string): string => {
+    const d = node.data || {};
+    const lines: string[] = [];
+    const name = d.name || node.label || '';
+    lines.push(`▸ ${labelType}：${name}`);
+    if (d.gender) lines.push(`  性别：${d.gender}`);
+    if (d.age != null) lines.push(`  年龄：${d.age}`);
+    if (d.appearance) lines.push(`  外貌：${d.appearance}`);
+    if (d.personality) lines.push(`  性格：${d.personality}`);
+    if (d.motivation) lines.push(`  动机：${d.motivation}`);
+    if (d.description) lines.push(`  描述：${d.description}`);
+    if (d.locationType) lines.push(`  类型：${d.locationType}`);
+    if (d.terrain) lines.push(`  地形：${d.terrain}`);
+    if (d.function) lines.push(`  功能：${d.function}`);
+    if (d.acquisitionMethod) lines.push(`  获取方式：${d.acquisitionMethod}`);
+    if (d.sceneDescription) lines.push(`  场景描述：${d.sceneDescription}`);
+    if (d.label && name !== d.label) lines.push(`  标签：${d.label}`);
+    return lines.join('\n') || `▸ ${labelType}：${name}`;
+  }, []);
+
+  // Helper: serialize an edge's text data
+  const edgeToText = useCallback((edge: any): string => {
+    const d = edge.data || {};
+    const lines: string[] = [];
+    if (edge.label) lines.push(`标签：${edge.label}`);
+    if (d.description) lines.push(`描述：${d.description}`);
+    if (d.relationType) lines.push(`关系类型：${d.relationType}`);
+    if (d.conditionLogic) lines.push(`条件逻辑：${d.conditionLogic}`);
+    if (d.trigger) lines.push(`触发：${d.trigger}`);
+    return lines.join('\n') || '(无详细信息)';
+  }, []);
+
   const handleAIFill = useCallback(
     async (fieldName: string, existingContent: string) => {
-      const projectId = useProjectStore.getState().project?.projectId;
+      const state = useProjectStore.getState();
+      const projectId = state.project?.projectId;
       if (!projectId || !selectedElementId) return;
 
       setAiLoadingFields((prev) => new Set(prev).add(fieldName));
+
+      // Look up the current node/edge and serialize it
+      let nodeDataStr = '';
+      try {
+        const proj = state.project;
+        if (!proj) {
+          nodeDataStr = '(无法获取项目数据)';
+        } else {
+          const key = pageType === 'character' ? 'characters' as const
+            : pageType === 'location' ? 'locations' as const
+            : pageType === 'item' ? 'items' as const
+            : 'plot' as const;
+          if (selectedElementType === 'node') {
+            const graph = key === 'plot' ? proj.plot.graph : proj[key];
+            const targetNode = graph.nodes.find((n: any) => n.id === selectedElementId);
+            if (targetNode) {
+              const labelType = pageType === 'character' ? '角色' : pageType === 'location' ? '地点' : pageType === 'item' ? '物品' : '情节节点';
+              nodeDataStr = `【所属${labelType}信息】\n${nodeToText(targetNode, labelType)}`;
+            } else {
+              nodeDataStr = '(未找到对应节点)';
+            }
+          } else if (selectedElementType === 'edge') {
+            const graph = key === 'plot' ? proj.plot.graph : proj[key];
+            const targetEdge = graph.edges.find((e: any) => e.id === selectedElementId);
+            if (targetEdge) {
+              nodeDataStr = `【所属连线信息】\n${edgeToText(targetEdge)}`;
+            } else {
+              nodeDataStr = '(未找到对应连线)';
+            }
+          }
+        }
+      } catch (_err) {
+        nodeDataStr = '(序列化节点数据时出错)';
+      }
+
       try {
         const res = await aiFillField({
           project_id: projectId,
           field_name: fieldName,
           existing_content: existingContent || '',
           node_type: pageType,
+          node_data: nodeDataStr,
         });
         console.log(`[AI 分析] ${fieldName}:`, res.analysis);
         handleFieldChange(fieldName, res.content);
@@ -363,7 +433,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         });
       }
     },
-    [selectedElementId, pageType, handleFieldChange]
+    [selectedElementId, selectedElementType, pageType, handleFieldChange, nodeToText, edgeToText]
   );
 
   if (!selectedElementId) {

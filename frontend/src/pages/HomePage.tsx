@@ -358,7 +358,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   cardHover: {
     background: 'rgba(255,255,255,0.06)',
-    borderColor: 'rgba(180,150,255,0.25)',
+    border: '1px solid rgba(180,150,255,0.25)',
     transform: 'translateY(-4px)',
     boxShadow: '0 16px 48px rgba(100, 50, 200, 0.15), 0 0 0 1px rgba(180,150,255,0.1) inset',
   },

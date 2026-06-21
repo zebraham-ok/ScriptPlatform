@@ -10,7 +10,11 @@ import ScriptCard from '../components/Plaza/ScriptCard';
 import ScriptFilter, { type SortType } from '../components/Plaza/ScriptFilter';
 import ParticleBackground from '../components/Effects/ParticleBackground';
 
-const PlazaPage: React.FC = () => {
+interface PlazaPageProps {
+  onNavigateToCreator: () => void;
+}
+
+const PlazaPage: React.FC<PlazaPageProps> = ({ onNavigateToCreator }) => {
   const setCurrentPage = useProjectStore((s) => s.setCurrentPage);
   const { joinRoom, connectAndJoin, setShowNicknameModal } = useGameStore() as any;
   const [scripts, setScripts] = useState<ScriptCardData[]>([]);
@@ -114,7 +118,7 @@ const PlazaPage: React.FC = () => {
             <HomeOutlined /> 回到首页
           </button>
           <button
-            onClick={() => setCurrentPage('character')}
+            onClick={onNavigateToCreator}
             className="px-4 py-2 text-sm bg-white/5 hover:bg-white/10 text-white/80 hover:text-white rounded-lg transition-all border border-white/10"
           >
             创作剧本

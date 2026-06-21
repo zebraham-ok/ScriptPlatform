@@ -10,6 +10,7 @@ from models.schemas import (
     AIGenerateRequest, AIGenerateResponse, AIChatRecord, AIHistoryResponse,
     AIModifyRequest, AIModifyResponse, AIUndoResponse,
     AIFillFieldRequest, AIFillFieldResponse,
+    TTSRequest, TTSResponse,
 )
 from services import ai_service, file_store
 from routers.auth import get_current_user
@@ -331,6 +332,7 @@ async def ai_fill_field(body: AIFillFieldRequest, username: str = Depends(get_cu
         "field_name": body.field_name,
         "existing_content": body.existing_content,
         "node_type": body.node_type,
+        "node_data": body.node_data,
     }
 
     try:
@@ -344,3 +346,28 @@ async def ai_fill_field(body: AIFillFieldRequest, username: str = Depends(get_cu
         content=result.get("content", ""),
         analysis=result.get("analysis", ""),
     )
+
+
+@router.post("/ai/tts", response_model=TTSResponse)
+async def ai_tts(body: TTSRequest):
+    """Generate TTS audio from text using EdgeTTS."""
+    from services.tts_service import text_to_speech, clean_tts_text
+
+    clean = clean_tts_text(body.text)
+    if not clean:
+        return TTSResponse(success=False, error="清洗后文本为空")
+
+    try:
+        b64 = await text_to_speech(
+            clean,
+            voice=body.voice,
+            rate=body.rate,
+            pitch=body.pitch,
+            style=body.style,
+        )
+        if b64:
+            return TTSResponse(audio_base64=b64, success=True)
+        else:
+            return TTSResponse(success=False, error="TTS合成失败")
+    except Exception as e:
+        return TTSResponse(success=False, error=str(e))

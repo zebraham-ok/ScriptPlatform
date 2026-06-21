@@ -21,6 +21,7 @@ interface ProjectStore {
   setProjectList: (list: any[]) => void;
   loadProject: (projectId: string) => Promise<void>;
   clearProject: () => void;
+  renameProject: (id: string, newTitle: string) => Promise<void>;
 
   // Actions - UI
   setCurrentPage: (page: PageType) => void;
@@ -99,6 +100,20 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       selectedElementId: null,
       selectedElementType: null,
     }),
+
+  renameProject: async (id, newTitle) => {
+    await patchProject(id, { title: newTitle });
+    const state = get();
+    // Update projectList
+    const newList = state.projectList.map((p) =>
+      p.id === id ? { ...p, title: newTitle } : p
+    );
+    set({ projectList: newList });
+    // Update current project if it's the one being renamed
+    if (state.project?.projectId === id) {
+      set({ project: { ...state.project, title: newTitle } });
+    }
+  },
 
   // UI
   setCurrentPage: (page) => set({ currentPage: page, selectedElementId: null, selectedElementType: null }),

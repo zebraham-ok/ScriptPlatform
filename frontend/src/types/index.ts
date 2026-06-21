@@ -150,6 +150,7 @@ export interface AIFillFieldRequest {
   field_name: string;
   existing_content: string;
   node_type: string;
+  node_data: string;
 }
 
 export interface AIFillFieldResponse {
@@ -214,6 +215,26 @@ export interface ChatMessage {
   narration?: string;
   actionType?: 'normal' | 'check' | 'vote';
   targetPlayerId?: string;  // for private messages
+}
+
+// TTS related types
+export interface TTSAudioPayload {
+  audio: string;      // base64-encoded MP3
+  text: string;        // original text for matching
+  messageId: string;   // unique ID for this TTS event
+}
+
+export interface VoiceConfig {
+  voice: string;
+  rate: string;
+  pitch: string;
+}
+
+export interface TTSState {
+  enabled: boolean;
+  playing: boolean;
+  audioQueue: TTSAudioPayload[];
+  currentAudio: TTSAudioPayload | null;
 }
 
 export interface SceneInfo {

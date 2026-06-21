@@ -614,13 +614,13 @@ def _build_fallback_opening(
     raw_scene_desc: str,
 ) -> str:
     """Build a fallback DM opening without AI (used when AI call fails)."""
-    lines = [f"## 🎬 {script_title}"]
+    lines = []
 
     # World intro
     if world_text:
         lines.append(f"\n{world_text[:300]}")
 
-    lines.append(f"\n📍 *{scene_name}*")
+    # lines.append(f"\n📍 {scene_name}")
 
     if raw_scene_desc and raw_scene_desc not in ("故事开始了...", "故事即将开始..."):
         lines.append(f"\n{raw_scene_desc[:400]}")
@@ -699,7 +699,7 @@ async def _generate_ai_opening(
 
 ---
 
-请输出 Markdown 格式的开场白，包含标题、场景名和正文。
+请输出开场白正文
 直接输出，不要添加解释。"""
 
     try:
@@ -717,8 +717,8 @@ async def _generate_ai_opening(
             text = response.choices[0].message.content or ""
             if text.strip():
                 # Ensure markdown structure
-                if not text.startswith("##"):
-                    text = f"## 🎬 {script_title}\n\n📍 *{scene_name}*\n\n{text}"
+                # if not text.startswith("##"):
+                #     text = f"## 🎬 {script_title}\n\n📍 *{scene_name}*\n\n{text}"
                 print(f"[opening_node] AI opening generated: {len(text)} chars")
                 return text
     except Exception as e:
