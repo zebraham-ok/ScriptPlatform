@@ -34,9 +34,6 @@ async def dm_response_node(state: GameState) -> Dict[str, Any]:
         if isinstance(m, dict):
             print(f"  [{i}] role={m.get('role','?')} sender={m.get('sender','?')}: {m.get('content','')[:120]}")
     print("-" * 40)
-    print(f"[dm_response_node] SYSTEM PROMPT ({len(system_prompt)} chars):")
-    print(system_prompt)
-    print("-" * 40)
     print(f"[dm_response_node] USER CONTEXT ({len(context_prompt)} chars):")
     print(context_prompt)
     print("=" * 80)

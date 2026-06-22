@@ -125,6 +125,7 @@ class ProjectData(BaseModel):
     title: str = ""
     worldSetting: List[WorldBlock] = Field(default_factory=list)
     dmNotes: str = ""
+    bgm: str = ""  # background music filename (from resource/music/)
     characterParams: List[CharacterParamDefinition] = Field(default_factory=list)
     characters: GraphData = Field(default_factory=GraphData)
     locations: GraphData = Field(default_factory=GraphData)

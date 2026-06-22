@@ -53,6 +53,7 @@ class GameState(TypedDict, total=False):
     scene_description: str             # scene description
     scene_image: Optional[str]         # scene image base64/url
     opening_narration: str             # AI-generated DM opening (markdown)
+    bgm: str                          # background music filename (from resource/music/)
 
     # === 游戏运行时 ===
     inventory: List[dict]              # player inventory

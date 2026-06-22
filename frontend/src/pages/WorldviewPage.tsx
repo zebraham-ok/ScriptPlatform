@@ -1,6 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Input, Space, Card, Typography, Empty, Popconfirm, Select, InputNumber, Tag, Divider, message } from 'antd';
-import { PlusOutlined, DeleteOutlined, RobotOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, RobotOutlined, CustomerServiceOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../store/useProjectStore';
 import { aiFillField } from '../api';
 import type { CharacterParamDefinition } from '../types';
@@ -15,9 +15,20 @@ const WorldviewPage: React.FC = () => {
     updateWorldBlock,
     deleteWorldBlock,
     updateDmNotes,
+    updateBgm,
     updateCharacterParams,
     setShowAI,
   } = useProjectStore();
+
+  // BGM list
+  const [musicList, setMusicList] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/music/list')
+      .then((r) => r.json())
+      .then((data) => setMusicList(data.music || []))
+      .catch(() => setMusicList([]));
+  }, []);
 
   // Access worldSetting from project directly since the store doesn't expose it separately
   const blocks = project?.worldSetting || [];
@@ -229,6 +240,21 @@ const WorldviewPage: React.FC = () => {
         <Text strong style={{ fontSize: 16 }}>
           主持人笔记
         </Text>
+        <Space align="center">
+          <CustomerServiceOutlined style={{ color: '#faad14' }} />
+          <Select
+            value={project?.bgm || undefined}
+            onChange={(v) => updateBgm(v || '')}
+            placeholder="BGM选择"
+            allowClear
+            style={{ width: 200 }}
+            options={musicList.map((name) => ({
+              value: name,
+              label: name.replace(/\.(mp3|wav|ogg|flac|m4a)$/i, ''),
+            }))}
+            notFoundContent="暂无音乐文件"
+          />
+        </Space>
       </div>
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
         供 AI 主持人（DM）参考的幕后指导信息，每回合都会注入给 DM。可在此记录情节走向提示、关键转折点、NPC 行为准则等内容。

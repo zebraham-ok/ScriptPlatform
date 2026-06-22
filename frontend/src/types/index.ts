@@ -124,6 +124,7 @@ export interface ProjectData {
   title: string;
   worldSetting: WorldBlock[];
   dmNotes?: string;
+  bgm?: string;  // BGM filename (from resource/music/)
   characterParams: CharacterParamDefinition[];
   characters: GraphData;
   locations: GraphData;

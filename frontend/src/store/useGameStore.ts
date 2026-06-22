@@ -68,6 +68,11 @@ interface GameStore {
   audioQueue: TTSAudioPayload[];
   currentTTSAudio: TTSAudioPayload | null;
 
+  // ---- BGM ----
+  bgmEnabled: boolean;
+  bgmVolume: number;           // 0.0 ~ 1.0
+  currentBgm: string | null;  // BGM filename (e.g. "中国古风.mp3")
+
   // === Actions ===
 
   // Connection
@@ -100,6 +105,11 @@ interface GameStore {
   _dequeueTTSAudio: () => void;
   _setTTSPlaying: (playing: boolean) => void;
   _setCurrentTTSAudio: (audio: TTSAudioPayload | null) => void;
+
+  // BGM
+  toggleBGM: () => void;
+  setBgmVolume: (volume: number) => void;
+  _setCurrentBgm: (bgm: string | null) => void;
 
   // Internal setters (called by socket event listeners)
   _setSocketConnected: (connected: boolean) => void;
@@ -154,6 +164,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   ttsPlaying: false,
   audioQueue: [],
   currentTTSAudio: null,
+
+  // BGM
+  bgmEnabled: true,
+  bgmVolume: 0.3,
+  currentBgm: null,
 
   // ---- Connection ----
   connectAndJoin: (roomId: string, nickname: string, isCreator: boolean, createData?: any) => {
@@ -358,6 +373,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ttsPlaying: false,
       audioQueue: [],
       currentTTSAudio: null,
+      bgmEnabled: true,
+      bgmVolume: 0.3,
+      currentBgm: null,
     });
   },
 
@@ -372,6 +390,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }),
   _setTTSPlaying: (playing) => set({ ttsPlaying: playing }),
   _setCurrentTTSAudio: (audio) => set({ currentTTSAudio: audio }),
+
+  // ---- BGM Actions ----
+  toggleBGM: () => set((s) => ({ bgmEnabled: !s.bgmEnabled })),
+  setBgmVolume: (volume) => set({ bgmVolume: Math.max(0, Math.min(1, volume)) }),
+  _setCurrentBgm: (bgm) => set({ currentBgm: bgm }),
 }));
 
 // ---- Socket Event Binding ----
@@ -403,6 +426,7 @@ function _bindSocketEvents(
     socket.off('role_update');
     socket.off('all_ready');
     socket.off('tts_audio');
+    socket.off('bgm_update');
     socket.off('turn_start');
     socket.off('turn_skip');
     socket.off('turn_timeout');
@@ -801,6 +825,13 @@ function _bindSocketEvents(
         store._enqueueTTSAudio(data);
       }
       console.log('[Socket] tts_audio received:', data.text?.substring(0, 50));
+    });
+
+    // ---- BGM Update ----
+    socket.on('bgm_update', (data: { bgm: string | null }) => {
+      console.log('[Socket] bgm_update:', data.bgm);
+      const store = get() as GameStore;
+      store._setCurrentBgm(data.bgm ?? null);
     });
 
     socket.on('disconnect', () => {

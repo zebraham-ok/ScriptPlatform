@@ -78,11 +78,6 @@ async def json_load_node(state: GameState) -> Dict[str, Any]:
             if opening and opening != state.get("scene_description", ""):
                 updates["scene_description"] = opening
             if not state.get("available_roles"):
-                # Debug: print each character's is_playable status
-                for c in chars:
-                    if isinstance(c, dict):
-                        print(f"[json_load_node] Char '{c.get('name','?')}' (id={c.get('id','?')}) "
-                              f"is_playable={c.get('is_playable')} (default=False)")
                 updates["available_roles"] = [
                     c.get("id", "") for c in chars
                     if isinstance(c, dict) and c.get("is_playable", False)
@@ -136,6 +131,7 @@ async def json_load_node(state: GameState) -> Dict[str, Any]:
         "scene_description": data.get("opening_scene", "故事开始了..."),
         "current_round": 1,
         "turn_number": 1,
+        "bgm": data.get("bgm", ""),
     }
 
     # Extract playable roles

@@ -4,7 +4,6 @@ Migrated from BUMENGweb-main web_server.py, engine.py, manager.py.
 """
 
 import os
-import re
 import json
 import uuid
 import asyncio
@@ -86,6 +85,7 @@ def _build_initial_state(room: dict) -> dict:
         "scene": "大厅",
         "scene_description": "",
         "scene_image": None,
+        "bgm": "",
         "inventory": [],
         "chat_history": [],
         "long_term_memory": {
@@ -567,6 +567,13 @@ async def _transition_role_select_to_playing(room_id: str):
     # Initialize long-term memory from script data (background, non-blocking)
     asyncio.create_task(_init_long_term_memory_async(room_id, room))
 
+    # Emit BGM if configured
+    bgm = state.get("bgm", "")
+    # print(f"[GameServer] 🎵 BGM check: state has 'bgm' key={('bgm' in state)}, value='{bgm}', state_keys={list(state.keys())[:20]}")
+    if bgm:
+        await sio.emit("bgm_update", {"bgm": bgm}, room=room_id)
+        # print(f"[GameServer] 🎵 BGM emitted: {bgm}")
+
     await _broadcast_room_state(room_id)
     print(f"[GameServer] ⚔️  ROLE_SELECT → PLAYING transition complete: {room_id}")
 
@@ -725,6 +732,7 @@ async def start_game(sid: str, data: dict):
     room["state"]["stage"] = "LOBBY"
     room["state"]["owner_sid"] = room.get("owner", "")
     room["state"]["total_rounds"] = room.get("totalRounds", 15)
+    # print(f"[GameServer] start_game state loaded: bgm='{room['state'].get('bgm', '')}', keys={list(room['state'].keys())[:20]}")
 
     # Log initial node for script modes
     if room["mode"] in ("script", "import"):
@@ -853,6 +861,12 @@ async def start_game(sid: str, data: dict):
         # Initialize long-term memory from script data (background, non-blocking)
         room["state"] = new_state  # update first so init reads correct state
         asyncio.create_task(_init_long_term_memory_async(room_id, room))
+
+        # Emit BGM if configured
+        bgm = new_state.get("bgm", "")
+        if bgm:
+            await sio.emit("bgm_update", {"bgm": bgm}, room=room_id)
+            # print(f"[GameServer] 🎵 BGM emitted: {bgm}")
 
     if room["stage"] != "PLAYING":
         room["state"] = new_state  # for ROLE_SELECT path
@@ -1210,10 +1224,54 @@ async def _process_graph_results(room_id: str, room: dict, new_state: dict):
     room["state"]["players_skipped_this_turn"] = set()
     room["state"]["turn_started_at"] = datetime.now().timestamp()
 
-
 # ============================================================
 #  Long-Term Memory — AI init at game start + async update each round
 # ============================================================
+
+async def _retry_parse_json_with_llm(
+    client,
+    model: str,
+    raw_response: str,
+    label: str = "",
+) -> dict | None:
+    """Ask the LLM to fix its own broken JSON response.
+
+    Sends the original broken response back to the AI with a correction prompt.
+    Uses parse_llm_json (json_repair) on the corrected response as well.
+    """
+    try:
+        correction_prompt = f"""你之前的回复中JSON格式有误，无法解析。请修正JSON格式后重新输出。
+
+⚠️ 要求：
+- 只返回有效的JSON对象
+- 不要添加任何解释或markdown格式
+- 确保所有逗号、引号、括号正确配对
+
+原始回复如下：
+{raw_response}
+
+请返回修正后的JSON："""
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": correction_prompt}],
+            temperature=0.1,  # Low temperature for precision
+            max_tokens=16000,
+        )
+        corrected_raw = response.choices[0].message.content or ""
+
+        from utils.json_utils import parse_llm_json
+        parsed = parse_llm_json(corrected_raw)
+        if parsed:
+            print(f"[LongTermMemory] ✅ AI JSON修复成功 ({label})")
+            return parsed
+        else:
+            print(f"[LongTermMemory] ⚠️ AI JSON修复后仍无法解析 ({label})")
+            return None
+    except Exception as e:
+        print(f"[LongTermMemory] ⚠️ AI JSON修复请求失败 ({label}): {e}")
+        return None
+
 
 async def _init_long_term_memory_async(room_id: str, room: dict):
     """
@@ -1367,38 +1425,49 @@ async def _init_long_term_memory_async(room_id: str, room: dict):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_tokens=3000,
+            max_tokens=16000,
         )
 
         raw = response.choices[0].message.content or ""
+        finish_reason = response.choices[0].finish_reason
+        usage = response.usage
+        print(f"[LongTermMemory] 📡 AI 原始响应（初始化）| len={len(raw)} finish_reason={finish_reason} "
+              f"prompt_tokens={usage.prompt_tokens if usage else '?'} "
+              f"completion_tokens={usage.completion_tokens if usage else '?'}")
+        print(raw)
+        print("[LongTermMemory] --- 原始响应结束 ---")
 
-        # Parse JSON
-        json_str = raw.strip()
-        if json_str.startswith("```"):
-            json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
-            json_str = re.sub(r'\s*```$', '', json_str)
+        # Parse JSON (extract + repair + parse via shared utility)
+        from utils.json_utils import parse_llm_json
 
-        new_memory = json.loads(json_str)
-        if isinstance(new_memory, dict):
-            ltm = state.get("long_term_memory", {})
-            state["long_term_memory"] = {
-                "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
-                "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
-                "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
-                "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
-            }
-            pk = list(state['long_term_memory']['player_memory'].keys())
-            nk = list(state['long_term_memory']['npc_memory'].keys())
-            gn_len = len(state['long_term_memory']['global_note'])
-            ps = state['long_term_memory']['plot_suggestion'][:80]
-            print(f"[LongTermMemory] ✅ 初始化完成 | global_note={gn_len}chars plot_suggestion={ps} players={pk} npcs={nk}")
-        else:
-            print(f"[LongTermMemory] ⚠️ AI 初始化返回的不是合法字典: {type(new_memory)}")
+        new_memory = parse_llm_json(raw)
+        if new_memory is None:
+            # Attempt 2: ask LLM to fix its own JSON
+            print(f"[LongTermMemory] ⚠️ 首次解析失败，尝试让AI修复JSON...")
+            new_memory = await _retry_parse_json_with_llm(
+                client=client, model=model,
+                raw_response=raw, label="初始化"
+            )
+
+        if new_memory is None:
+            print(f"[LongTermMemory] ⚠️ 所有解析尝试均失败，放弃初始化")
+            return
+
+        ltm = state.get("long_term_memory", {})
+        state["long_term_memory"] = {
+            "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
+            "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
+            "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+            "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
+        }
+        pk = list(state['long_term_memory']['player_memory'].keys())
+        nk = list(state['long_term_memory']['npc_memory'].keys())
+        gn_len = len(state['long_term_memory']['global_note'])
+        ps = state['long_term_memory']['plot_suggestion'][:80]
+        print(f"[LongTermMemory] ✅ 初始化完成 | global_note={gn_len}chars plot_suggestion={ps} players={pk} npcs={nk}")
 
     except asyncio.TimeoutError:
         print("[LongTermMemory] ⏰ 初始化超时")
-    except json.JSONDecodeError as e:
-        print(f"[LongTermMemory] ⚠️ 初始化 JSON 解析失败: {e}")
     except Exception as e:
         print(f"[LongTermMemory] ⚠️ 初始化失败: {e}")
 
@@ -1499,35 +1568,46 @@ async def _update_long_term_memory_async(room_id: str, room: dict):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=16000,
         )
 
         raw = response.choices[0].message.content or ""
+        finish_reason = response.choices[0].finish_reason
+        usage = response.usage
+        print(f"[LongTermMemory] 📡 AI 原始响应（更新）| len={len(raw)} finish_reason={finish_reason} "
+              f"prompt_tokens={usage.prompt_tokens if usage else '?'} "
+              f"completion_tokens={usage.completion_tokens if usage else '?'}")
+        print(raw)
+        print("[LongTermMemory] --- 原始响应结束 ---")
 
-        # Parse JSON from response (strip markdown code blocks if present)
-        json_str = raw.strip()
-        if json_str.startswith("```"):
-            json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
-            json_str = re.sub(r'\s*```$', '', json_str)
+        # Parse JSON (extract + repair + parse via shared utility)
+        from utils.json_utils import parse_llm_json
 
-        new_memory = json.loads(json_str)
-        if isinstance(new_memory, dict):
-            state["long_term_memory"] = {
-                "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
-                "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
-                "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
-                "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
-            }
-            gn_len = len(state['long_term_memory']['global_note'])
-            ps = state['long_term_memory']['plot_suggestion'][:80]
-            print(f"[LongTermMemory] ✅ 已更新 | global_note={gn_len}chars plot_suggestion={ps}")
-        else:
-            print(f"[LongTermMemory] ⚠️ AI 返回的不是合法字典: {type(new_memory)}")
+        new_memory = parse_llm_json(raw)
+        if new_memory is None:
+            # Attempt 2: ask LLM to fix its own JSON
+            print(f"[LongTermMemory] ⚠️ 首次解析失败（更新），尝试让AI修复JSON...")
+            new_memory = await _retry_parse_json_with_llm(
+                client=client, model=model,
+                raw_response=raw, label="更新"
+            )
+
+        if new_memory is None:
+            print(f"[LongTermMemory] ⚠️ 所有解析尝试均失败，放弃更新")
+            return
+
+        state["long_term_memory"] = {
+            "player_memory": new_memory.get("player_memory", ltm.get("player_memory", {}) if isinstance(ltm, dict) else {}),
+            "npc_memory": new_memory.get("npc_memory", ltm.get("npc_memory", {}) if isinstance(ltm, dict) else {}),
+            "global_note": new_memory.get("global_note", ltm.get("global_note", "") if isinstance(ltm, dict) else ""),
+            "plot_suggestion": new_memory.get("plot_suggestion", ltm.get("plot_suggestion", "") if isinstance(ltm, dict) else ""),
+        }
+        gn_len = len(state['long_term_memory']['global_note'])
+        ps = state['long_term_memory']['plot_suggestion'][:80]
+        print(f"[LongTermMemory] ✅ 已更新 | global_note={gn_len}chars plot_suggestion={ps}")
 
     except asyncio.TimeoutError:
         print("[LongTermMemory] ⏰ 更新超时")
-    except json.JSONDecodeError as e:
-        print(f"[LongTermMemory] ⚠️ JSON 解析失败: {e}")
     except Exception as e:
         print(f"[LongTermMemory] ⚠️ 更新失败: {e}")
 
@@ -1589,23 +1669,53 @@ async def _retry_ai_opening_background(
     new_state: dict,
     prompt_data: dict,
 ):
-    """Generate AI opening narration in background and emit as updated chat."""
+    """Generate AI opening narration + summaries in background and emit as updated chat.
+    Two separate LLM calls run in parallel."""
     try:
-        from game.nodes.opening_node import _generate_ai_opening
-        ai_result = await _generate_ai_opening(**prompt_data)
-        # _generate_ai_opening returns a dict: {"opening": str, "world_summary": str, "plot_summary": str}
-        ai_text = ai_result.get("opening", "") if isinstance(ai_result, dict) else str(ai_result)
-        world_s = ai_result.get("world_summary", "") if isinstance(ai_result, dict) else ""
-        plot_s = ai_result.get("plot_summary", "") if isinstance(ai_result, dict) else ""
+        from game.nodes.opening_node import _generate_ai_opening_text, _generate_ai_summaries
 
+        # Unpack prompt data (compatible with both generation functions)
+        script_title = prompt_data.get("script_title", "")
+        world_summary = prompt_data.get("world_summary", "")
+        char_summary = prompt_data.get("char_summary", "")
+        loc_summary = prompt_data.get("loc_summary", "")
+        plot_context = prompt_data.get("plot_context", "")
+        scene_name = prompt_data.get("scene_name", "")
+        raw_scene_desc = prompt_data.get("raw_scene_desc", "")
+        initial_node_context = prompt_data.get("initial_node_context", "")
+        story_overview = prompt_data.get("story_overview", "")
+
+        # Two parallel calls: opening text + summaries
+        opening_result, summaries_result = await asyncio.gather(
+            _generate_ai_opening_text(
+                script_title=script_title,
+                world_summary=world_summary,
+                char_summary=char_summary,
+                loc_summary=loc_summary,
+                plot_context=plot_context,
+                scene_name=scene_name,
+                raw_scene_desc=raw_scene_desc,
+                initial_node_context=initial_node_context,
+            ),
+            _generate_ai_summaries(
+                script_title=script_title,
+                world_summary=world_summary,
+                loc_summary=loc_summary,
+                plot_context=plot_context,
+                initial_node_context=initial_node_context,
+                story_overview=story_overview,
+            ),
+        )
+
+        ai_text = opening_result
         if ai_text and ai_text != new_state.get("opening_narration", ""):
-            # Update state with better AI opening
             new_state["opening_narration"] = ai_text
             new_state["_opening_is_ai"] = True
-            if world_s:
-                new_state["world_summary"] = world_s
-            if plot_s:
-                new_state["plot_summary"] = plot_s
+            if summaries_result:
+                if summaries_result.get("world_summary"):
+                    new_state["world_summary"] = summaries_result["world_summary"]
+                if summaries_result.get("plot_summary"):
+                    new_state["plot_summary"] = summaries_result["plot_summary"]
             room["state"] = new_state
 
             # Send as DM narration to all players
@@ -1798,6 +1908,6 @@ async def _generate_tts_audio(room_id: str, content: str, speaker: str = "dm"):
 #  ASGI App Factory
 # ========================================
 
-def create_socketio_app():
+def create_socketio_app(fastapi_app=None):
     """Create the Socket.IO ASGI app for FastAPI mounting."""
-    return socketio.ASGIApp(sio, socketio_path="/socket.io")
+    return socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path="/socket.io")

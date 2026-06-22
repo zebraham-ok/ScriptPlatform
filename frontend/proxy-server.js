@@ -68,7 +68,7 @@ const server = http.createServer((req, res) => {
   console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
 
   // API 请求 → 代理到后端
-  if (req.url.startsWith('/api/')) {
+  if (req.url.startsWith('/api/') || req.url.startsWith('/resource/')) {
     proxyToBackend(req, res);
     return;
   }

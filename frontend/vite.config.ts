@@ -21,6 +21,10 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      '/resource': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

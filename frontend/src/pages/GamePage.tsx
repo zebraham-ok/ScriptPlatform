@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Button, Input, Modal, message } from 'antd';
-import { ThunderboltOutlined, UserOutlined, CopyOutlined, LinkOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Input, Modal, Slider, message } from 'antd';
+import { ThunderboltOutlined, UserOutlined, CopyOutlined, LinkOutlined, CheckCircleOutlined, SoundOutlined } from '@ant-design/icons';
 import { useProjectStore } from '../store/useProjectStore';
 import { useGameStore } from '../store/useGameStore';
 import type { RoleDetail } from '../types';
@@ -21,6 +21,7 @@ const GamePage: React.FC = () => {
   const setCurrentPage = useProjectStore((s) => s.setCurrentPage);
   const roomIdFromUrl = new URLSearchParams(window.location.search).get('roomId');
 
+  const store = useGameStore() as any;
   const {
     roomInfo, stage, loading, error, playerId,
     players, socketConnected, showNicknameModal, isCreator,
@@ -28,7 +29,12 @@ const GamePage: React.FC = () => {
     setShowNicknameModal, requestStartGame,
     availableRoles, roleDetails, assignedRoles,
     selectRole, submitCharacterSheet, playerReady,
-  } = useGameStore() as any;
+  } = store;
+
+  const currentBgm: string | null = store.currentBgm;
+  const bgmEnabled: boolean = store.bgmEnabled;
+  const bgmVolume: number = store.bgmVolume;
+  const setBgmVolume: (v: number) => void = store.setBgmVolume;
 
   const [nicknameInput, setNicknameInput] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
@@ -119,6 +125,94 @@ const GamePage: React.FC = () => {
     playerReady();
     message.success('已准备就绪！');
   };
+
+  // ---- BGM Audio ----
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // console.log('[BGM] useEffect triggered', {
+    //   currentBgm,
+    //   bgmEnabled,
+    //   hasAudioRef: !!bgmAudioRef.current,
+    // });
+
+    // Create audio element once
+    if (!bgmAudioRef.current) {
+      const audio = new Audio();
+      audio.loop = true;
+      audio.volume = bgmVolume;
+      bgmAudioRef.current = audio;
+      // console.log(`[BGM] Audio element created, loop=true, volume=${bgmVolume}`);
+    }
+
+    const audio = bgmAudioRef.current;
+    const bgmUrl = currentBgm ? `/resource/music/${encodeURIComponent(currentBgm)}` : null;
+    // console.log('[BGM] Constructed URL:', bgmUrl);
+
+    if (bgmEnabled && bgmUrl) {
+      const currentSrc = audio.src;
+      // console.log('[BGM] bgmEnabled=true, currentSrc:', currentSrc);
+      // Only set new src if it changed
+      if (!currentSrc.endsWith(bgmUrl)) {
+        // console.log('[BGM] Setting new src:', bgmUrl);
+        audio.src = bgmUrl;
+        audio.play()
+          .then(() => {/* console.log('[BGM] play() succeeded') */})
+          .catch((err) => {/* console.warn('[BGM] play() failed:', err) */});
+      } else if (audio.paused) {
+        // console.log('[BGM] Same src, resuming paused audio');
+        audio.play()
+          .then(() => {/* console.log('[BGM] resume play() succeeded') */})
+          .catch((err) => {/* console.warn('[BGM] resume play() failed:', err) */});
+      } // else: already playing, no change needed
+    } else {
+      // console.log('[BGM] Disabled or no URL — pausing', { bgmEnabled, bgmUrl });
+      audio.pause();
+      if (audio.src) {
+        audio.src = '';
+      }
+    }
+
+    // Listen for errors on the audio element
+    const onError = (e: Event) => {
+      const el = e.target as HTMLAudioElement;
+      // console.error('[BGM] Audio error:', {
+      //   src: el.src,
+      //   error: el.error?.message,
+      //   code: el.error?.code,
+      //   networkState: el.networkState,
+      //   readyState: el.readyState,
+      // });
+    };
+    const onCanPlay = () => {/* console.log('[BGM] canplay event') */};
+    const onLoadedData = () => {/* console.log('[BGM] loadeddata event') */};
+    audio.addEventListener('error', onError);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('loadeddata', onLoadedData);
+
+    return () => {
+      // console.log('[BGM] useEffect cleanup');
+      audio.removeEventListener('error', onError);
+      audio.removeEventListener('canplay', onCanPlay);
+      audio.removeEventListener('loadeddata', onLoadedData);
+    };
+  }, [currentBgm, bgmEnabled]);
+
+  // ---- BGM Volume Sync ----
+  useEffect(() => {
+    const audio = bgmAudioRef.current;
+    if (audio) {
+      audio.volume = bgmVolume;
+    }
+  }, [bgmVolume]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      bgmAudioRef.current?.pause();
+      bgmAudioRef.current = null;
+    };
+  }, []);
 
   // ---- Role Selection Modal (overlays the game UI) ----
   const renderRoleSelectionModal = () => {
@@ -401,6 +495,28 @@ const GamePage: React.FC = () => {
           <span className="text-xs text-slate-500">
             {Object.keys(players).length} 人在线
           </span>
+          {/* BGM Volume Control */}
+          <div className="flex items-center gap-1.5 ml-1">
+            <SoundOutlined
+              onClick={() => store.toggleBGM()}
+              className={`text-sm cursor-pointer transition-colors ${
+                bgmEnabled && bgmVolume > 0 ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-slate-400'
+              }`}
+            />
+            <Slider
+              min={0}
+              max={1}
+              step={0.05}
+              value={bgmVolume}
+              onChange={(v) => setBgmVolume(v as number)}
+              tooltip={{ formatter: (v) => `${Math.round((v || 0) * 100)}%` }}
+              className="w-20"
+              styles={{
+                track: { backgroundColor: bgmEnabled && bgmVolume > 0 ? '#f59e0b' : '#475569' },
+                handle: { borderColor: bgmEnabled && bgmVolume > 0 ? '#f59e0b' : '#475569' },
+              }}
+            />
+          </div>
           <TurnTimer />
           <button
             onClick={handleCopyShareLink}

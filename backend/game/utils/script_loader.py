@@ -47,6 +47,12 @@ def load_script_data(script_json: dict) -> dict:
 
     # DM Notes — editor module "主持人笔记" (between worldSetting and characters)
     dm_notes = script_json.get("dmNotes", "")
+    result["dm_notes"] = dm_notes
+
+    # BGM — background music filename
+    bgm = script_json.get("bgm", "")
+    result["bgm"] = bgm
+    # print(f"[ScriptLoader] BGM loaded: '{bgm}' (empty={not bgm})")
     if dm_notes:
         result["dm_notes"] = dm_notes
 

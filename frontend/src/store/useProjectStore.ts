@@ -38,6 +38,9 @@ interface ProjectStore {
   // Actions - DM Notes (主持人笔记)
   updateDmNotes: (notes: string) => void;
 
+  // Actions - BGM
+  updateBgm: (bgm: string) => void;
+
   // Actions - Character Params (from worldview)
   updateCharacterParams: (params: CharacterParamDefinition[]) => void;
 
@@ -171,6 +174,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const project = get().project;
     if (!project) return;
     set({ project: { ...project, dmNotes: notes } });
+    get()._autoSave();
+  },
+
+  // BGM
+  updateBgm: (bgm: string) => {
+    const project = get().project;
+    if (!project) return;
+    set({ project: { ...project, bgm } });
     get()._autoSave();
   },
 
