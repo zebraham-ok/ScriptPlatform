@@ -112,6 +112,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     # Try AI with a short timeout so stage transition isn't blocked.
     # Two separate calls run in parallel: (1) opening narration, (2) summaries.
     opening_text = fallback_text
+    opening_options: list = []
     opening_pending = False
     world_summary_gen = ""
     plot_summary_gen = ""
@@ -129,7 +130,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
                         raw_scene_desc=raw_scene_desc,
                         initial_node_context=initial_node_context,
                     ),
-                    timeout=4.0,
+                    timeout=8.0,  # increased from 4s to accommodate longer output (1500 tokens)
                 )
             except Exception:
                 return None
@@ -156,7 +157,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         )
 
         if opening_result:
-            opening_text = opening_result
+            opening_text, opening_options = opening_result
         else:
             if has_roles:
                 opening_pending = True
@@ -174,6 +175,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     updates["scene"] = display_scene_name
     updates["scene_description"] = raw_scene_desc or opening_text
     updates["opening_narration"] = opening_text
+    updates["opening_options"] = opening_options
     updates["world_summary"] = world_summary_gen
     updates["plot_summary"] = plot_summary_gen
     updates["_opening_pending"] = opening_pending
@@ -197,7 +199,7 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     print(f"[opening_node] Done: stage={updates['stage']}, "
           f"_needs_role_select={updates.get('_needs_role_select')}, "
           f"_role_details count={len(updates.get('_role_details', []))}, "
-          f"narration={len(opening_text)} chars (pending_ai={opening_pending}), "
+          f"narration={len(opening_text or '')} chars (pending_ai={opening_pending}), "
           f"roles={len(available_roles)}, "
           f"scene={display_scene_name}")
 
@@ -677,8 +679,8 @@ async def _generate_ai_opening_text(
     scene_name: str,
     raw_scene_desc: str,
     initial_node_context: str = "",
-) -> str | None:
-    """Generate opening narration as plain text (no JSON). Returns text or None."""
+) -> tuple[str | None, list[str]]:
+    """Generate opening narration + options. Returns (narration_or_None, options_list)."""
     char_context = f"\n\n**场上人物（仅供背景参考，不要在开场白中列出可选角色）**：\n{char_summary}" if char_summary else ""
 
     node_section = ""
@@ -720,9 +722,84 @@ async def _generate_ai_opening_text(
 5. 长度控制在 300 字以内
 6. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
 
-只返回开场白正文，不要JSON、不要任何其他格式。"""
+输出格式：
+##NARRATION##
+（你的开场白正文，仅开场叙述，不要推进剧情）
 
-    return await _call_ai_text(prompt, "opening narration", max_tokens=800, temperature=0.8)
+##OPTIONS##
+- 玩家可以选择的行动方向1（简短，5-15字）
+- 玩家可以选择的行动方向2
+- 玩家可以选择的行动方向3
+（给出2-3个自然的行动选择，引导玩家进入游戏，选项要简短清晰）"""
+
+    raw = await _call_ai_text(prompt, "opening narration", max_tokens=6000, temperature=0.8)
+    if not raw:
+        return None, []
+
+    narration, options = _parse_opening_response(raw)
+
+    # Log if either part is empty (diagnostic)
+    if not narration:
+        print(f"[opening_node] ⚠️ Parsed narration is empty! Raw: {raw[:200]}...")
+    if not options:
+        print(f"[opening_node] ⚠️ Parsed options is empty! Raw ends: ...{raw[-200:]}")
+
+    return narration, options
+
+
+def _parse_opening_response(raw: str) -> tuple[str | None, list[str]]:
+    """Parse AI opening response: separate narration from options.
+    Handles both formatted (##NARRATION## / ##OPTIONS##) and unformatted responses."""
+    import re
+
+    narration: str | None = None
+    options: list[str] = []
+
+    # Try to extract ##NARRATION## block
+    narr_match = re.search(
+        r'##NARRATION##\s*([\s\S]*?)(?=##OPTIONS##|$)',
+        raw, re.IGNORECASE,
+    )
+    if narr_match:
+        narration = narr_match.group(1).strip()
+
+    # Try to extract ##OPTIONS## block
+    opts_match = re.search(
+        r'##OPTIONS##\s*([\s\S]*?)$',
+        raw, re.IGNORECASE,
+    )
+    if opts_match:
+        opts_text = opts_match.group(1).strip()
+        options = _clean_opening_options(opts_text)
+
+    # If no narration block found, use everything before ##OPTIONS## or the whole text
+    if not narration:
+        if opts_match:
+            narration = raw[:opts_match.start()].strip()
+        else:
+            narration = raw.strip()
+
+    if not narration:
+        narration = None
+
+    return narration, options
+
+
+def _clean_opening_options(opts_text: str) -> list[str]:
+    """Clean option lines: strip bullet markers and numbering."""
+    import re
+    options = []
+    for line in opts_text.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Remove leading bullet markers: "- ", "• ", "* ", "▸ "
+        line = re.sub(r'^[•\*▸\-•]\s*', '', line)
+        # Remove leading numbering: "1. ", "1) ", "1、"
+        line = re.sub(r'^\d+[\.\)、]\s*', '', line)
+        if line:
+            options.append(line)
+    return options
 
 
 async def _generate_ai_summaries(

@@ -148,17 +148,21 @@ async def text_to_speech(
         with open(cache_path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
 
-    # Build SSML if style is specified
-    ssml_text = text
-    use_ssml = style is not None
-    if use_ssml:
-        ssml_text = (
-            f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
-            f'xmlns:mstts="https://www.w3.org/2001/mstts">'
-            f'<voice name="{voice_name}">'
-            f'<mstts:express-as style="{style}">{text}</mstts:express-as>'
-            f'</voice></speak>'
-        )
+    # NOTE: SSML (style/emotion) is disabled because edge_tts sometimes
+    # mis-detects SSML and reads the XML tags aloud as plain text.
+    # Use plain text with voice/rate/pitch params — always reliable.
+    synth_text = text
+    # use_ssml = style is not None
+    # if use_ssml:
+    #     # Ensure XML-safe by escaping special chars in the text content
+    #     safe_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    #     synth_text = (
+    #         f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
+    #         f'xmlns:mstts="https://www.w3.org/2001/mstts">'
+    #         f'<voice name="{voice_name}">'
+    #         f'<mstts:express-as style="{style}">{safe_text}</mstts:express-as>'
+    #         f'</voice></speak>'
+    #     )
 
     async def _do_synthesize(synth_text: str) -> list:
         communicate = edge_tts.Communicate(
@@ -174,15 +178,10 @@ async def text_to_speech(
         return chunks
 
     try:
-        audio_chunks = await _do_synthesize(ssml_text)
-        # If SSML failed and we used style, retry without SSML
-        if not audio_chunks and use_ssml:
-            print(f"[TTS] SSML with style='{style}' failed for {voice_name}, retrying without style")
-            audio_chunks = await _do_synthesize(text)
+        audio_chunks = await _do_synthesize(synth_text)
 
         if audio_chunks:
             audio_data = b"".join(audio_chunks)
-            # Cache it
             with open(cache_path, "wb") as f:
                 f.write(audio_data)
             return base64.b64encode(audio_data).decode("utf-8")
@@ -190,20 +189,7 @@ async def text_to_speech(
             return ""
 
     except Exception as e:
-        # If SSML error, retry without SSML
-        if use_ssml:
-            try:
-                print(f"[TTS] SSML exception for style='{style}', retrying without style: {e}")
-                audio_chunks = await _do_synthesize(text)
-                if audio_chunks:
-                    audio_data = b"".join(audio_chunks)
-                    with open(cache_path, "wb") as f:
-                        f.write(audio_data)
-                    return base64.b64encode(audio_data).decode("utf-8")
-            except Exception as e2:
-                print(f"[TTS] Retry also failed: {e2}")
-        else:
-            print(f"[TTS] Synthesis failed: {e}")
+        print(f"[TTS] Synthesis failed: {e}")
         return ""
 
 
@@ -212,8 +198,8 @@ async def dm_tts(text: str) -> Optional[str]:
     clean = clean_tts_text(text)
     if not clean:
         return None
-    emotion = infer_emotion(clean)
-    return await text_to_speech(clean, voice="dm", rate="+10%", style=emotion)
+    # emotion = infer_emotion(clean)  # SSML disabled — see note in text_to_speech()
+    return await text_to_speech(clean, voice="dm", rate="+10%")
 
 
 async def generate_tts_for_chat(
@@ -241,6 +227,6 @@ async def generate_tts_for_chat(
         voice = "female"
         rate = "+15%"
 
-    emotion = infer_emotion(clean)
-    return await text_to_speech(clean, voice=voice, rate=rate, style=emotion)
+    # emotion = infer_emotion(clean)  # SSML disabled — see note in text_to_speech()
+    return await text_to_speech(clean, voice=voice, rate=rate)
 

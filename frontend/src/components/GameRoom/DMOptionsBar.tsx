@@ -4,7 +4,7 @@ import { useGameStore } from '../../store/useGameStore';
 /**
  * DMOptionsBar — 主持人选项按钮栏
  * 显示在聊天框上方，供玩家快速选择 DM 提供的行动方向。
- * 参考 BUMENGweb-main App.jsx 的 latestDmOptions 渲染逻辑。
+ * 点击后填入输入框，玩家可编辑后再发送。
  */
 const DMOptionsBar: React.FC = () => {
   const dmOptions = useGameStore((s) => s.dmOptions);
@@ -12,7 +12,8 @@ const DMOptionsBar: React.FC = () => {
   const dmThinking = useGameStore((s) => s.dmThinking);
 
   const handleSelect = useCallback((optionText: string) => {
-    useGameStore.getState().selectDMOptionByText(optionText);
+    // Fill the input box with this option (user can edit before sending)
+    useGameStore.getState().setInputPreset(optionText);
   }, []);
 
   // Hide options during DM thinking (e.g., processing check results)

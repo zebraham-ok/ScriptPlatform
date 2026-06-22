@@ -61,6 +61,7 @@ interface GameStore {
   showNicknameModal: boolean;  // for guest join via link
   pendingRoomId: string | null;
   isCreator: boolean;  // whether current user created this room
+  inputPreset: string | null;  // pre-fill input with text (e.g. from clicked DM option)
 
   // ---- TTS ----
   ttsEnabled: boolean;
@@ -127,6 +128,7 @@ interface GameStore {
   _setLoading: (loading: boolean) => void;
   _setError: (error: string | null) => void;
   _clearGame: () => void;
+  setInputPreset: (text: string | null) => void;
 }
 
 function _addMessage(msgs: ChatMessage[], msg: ChatMessage): ChatMessage[] {
@@ -158,6 +160,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   showNicknameModal: false,
   pendingRoomId: null,
   isCreator: false,
+  inputPreset: null,
 
   // TTS
   ttsEnabled: true,
@@ -369,6 +372,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       loading: false,
       error: null,
       isCreator: false,
+  inputPreset: null,
       ttsEnabled: true,
       ttsPlaying: false,
       audioQueue: [],
@@ -395,6 +399,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   toggleBGM: () => set((s) => ({ bgmEnabled: !s.bgmEnabled })),
   setBgmVolume: (volume) => set({ bgmVolume: Math.max(0, Math.min(1, volume)) }),
   _setCurrentBgm: (bgm) => set({ currentBgm: bgm }),
+
+  setInputPreset: (text) => set({ inputPreset: text }),
 }));
 
 // ---- Socket Event Binding ----

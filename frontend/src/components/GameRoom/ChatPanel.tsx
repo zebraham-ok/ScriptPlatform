@@ -151,19 +151,8 @@ const ChatPanel: React.FC = () => {
                   key={i}
                   className="px-3 py-1.5 text-sm rounded-full border border-amber-500/40 text-amber-300 bg-amber-500/5 hover:bg-amber-500/15 hover:border-amber-400 hover:text-amber-200 transition-colors cursor-pointer"
                   onClick={() => {
-                    // 先清空消息内的选项，防止重新显示
-                    const store = useGameStore.getState();
-                    // 创建新的messages数组，找到当前消息并清空它的dmOptions
-                    const newMessages = store.messages.map(m => {
-                      if (m.id === msg.id) {
-                        return { ...m, dmOptions: undefined };
-                      }
-                      return m;
-                    });
-                    // 使用Zustand正确的set方法更新store
-                    useGameStore.setState({ messages: newMessages, dmOptions: [] });
-                    // 然后发送选项选择
-                    store.selectDMOptionByText(opt);
+                    // Fill the input box with this option text (user can edit before sending)
+                    useGameStore.getState().setInputPreset(opt);
                   }}
                 >
                   {opt}

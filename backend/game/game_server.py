@@ -199,6 +199,7 @@ async def _invoke_graph(room: dict, updates: dict) -> dict:
           f"current_round={current_state.get('current_round', '?')}, "
           f"chat_history_len={len(current_state.get('chat_history', []))}, "
           f"dm_response_len={len(current_state.get('dm_response', ''))}, "
+          f"bgm='{current_state.get('bgm', '')}', "
           f"updates_keys={list(updates.keys()) if updates else 'none'}")
 
     try:
@@ -211,7 +212,8 @@ async def _invoke_graph(room: dict, updates: dict) -> dict:
               f"stage={result.get('stage', '?')}, "
               f"current_round={result.get('current_round', '?')}, "
               f"dm_response_len={len(result.get('dm_response', ''))}, "
-              f"result_chat_history_len={len(result.get('chat_history', []))}")
+              f"result_chat_history_len={len(result.get('chat_history', []))}, "
+              f"bgm='{result.get('bgm', '')}'")
         return result
     except asyncio.TimeoutError:
         print(f"[GameServer] Graph invocation timeout for room {room['id']}")
@@ -569,10 +571,12 @@ async def _transition_role_select_to_playing(room_id: str):
 
     # Emit BGM if configured
     bgm = state.get("bgm", "")
-    # print(f"[GameServer] 🎵 BGM check: state has 'bgm' key={('bgm' in state)}, value='{bgm}', state_keys={list(state.keys())[:20]}")
+    print(f"[GameServer] 🎵 ROLE_SELECT→PLAYING: bgm='{bgm}', in_state_keys={'bgm' in state}")
     if bgm:
         await sio.emit("bgm_update", {"bgm": bgm}, room=room_id)
-        # print(f"[GameServer] 🎵 BGM emitted: {bgm}")
+        print(f"[GameServer] 🎵 BGM emitted to room {room_id}: {bgm}")
+    else:
+        print(f"[GameServer] 🎵 No BGM configured (bgm is empty)")
 
     await _broadcast_room_state(room_id)
     print(f"[GameServer] ⚔️  ROLE_SELECT → PLAYING transition complete: {room_id}")
@@ -732,7 +736,7 @@ async def start_game(sid: str, data: dict):
     room["state"]["stage"] = "LOBBY"
     room["state"]["owner_sid"] = room.get("owner", "")
     room["state"]["total_rounds"] = room.get("totalRounds", 15)
-    # print(f"[GameServer] start_game state loaded: bgm='{room['state'].get('bgm', '')}', keys={list(room['state'].keys())[:20]}")
+    print(f"[GameServer] 🎵 start_game state loaded: bgm='{room['state'].get('bgm', '')}'")
 
     # Log initial node for script modes
     if room["mode"] in ("script", "import"):
@@ -778,6 +782,7 @@ async def start_game(sid: str, data: dict):
     opening_prompt_data = new_state.get("_opening_prompt_data")
     opening_is_ai = new_state.get("_opening_is_ai", False)
     opening_narration = new_state.get("opening_narration", "")
+    opening_options = new_state.get("opening_options", [])
 
     # ========================================
     #  Route by stage (authoritative, not hidden flag)
@@ -792,6 +797,7 @@ async def start_game(sid: str, data: dict):
                 "role": "dm",
                 "sender": "DM",
                 "content": opening_narration,
+                "options": opening_options,
                 "timestamp": datetime.now().isoformat(),
             }
             await sio.emit("chat_message", dm_opening_msg, room=room_id)
@@ -832,6 +838,7 @@ async def start_game(sid: str, data: dict):
                 "role": "dm",
                 "sender": "DM",
                 "content": opening_narration,
+                "options": opening_options,
                 "timestamp": datetime.now().isoformat(),
             }
             await sio.emit("chat_message", dm_opening_msg, room=room_id)
@@ -864,9 +871,12 @@ async def start_game(sid: str, data: dict):
 
         # Emit BGM if configured
         bgm = new_state.get("bgm", "")
+        print(f"[GameServer] 🎵 PLAYING path: bgm='{bgm}', in_state_keys={'bgm' in new_state}")
         if bgm:
             await sio.emit("bgm_update", {"bgm": bgm}, room=room_id)
-            # print(f"[GameServer] 🎵 BGM emitted: {bgm}")
+            print(f"[GameServer] 🎵 BGM emitted to room {room_id}: {bgm}")
+        else:
+            print(f"[GameServer] 🎵 No BGM configured (bgm is empty)")
 
     if room["stage"] != "PLAYING":
         room["state"] = new_state  # for ROLE_SELECT path
@@ -1707,9 +1717,13 @@ async def _retry_ai_opening_background(
             ),
         )
 
-        ai_text = opening_result
+        ai_text: str | None = None
+        ai_options: list = []
+        if opening_result:
+            ai_text, ai_options = opening_result
         if ai_text and ai_text != new_state.get("opening_narration", ""):
             new_state["opening_narration"] = ai_text
+            new_state["opening_options"] = ai_options
             new_state["_opening_is_ai"] = True
             if summaries_result:
                 if summaries_result.get("world_summary"):
@@ -1723,6 +1737,7 @@ async def _retry_ai_opening_background(
                 "role": "dm",
                 "sender": "DM",
                 "content": ai_text,
+                "options": ai_options,
                 "timestamp": datetime.now().isoformat(),
             }, room=room_id)
 

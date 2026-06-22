@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 
 const ActionInput: React.FC = () => {
@@ -7,6 +7,16 @@ const ActionInput: React.FC = () => {
   const skipTurn = useGameStore((s) => s.skipTurn);
   const stage = useGameStore((s) => s.stage);
   const roomInfo = useGameStore((s) => s.roomInfo);
+  const inputPreset = useGameStore((s) => s.inputPreset);
+  const setInputPreset = useGameStore((s) => s.setInputPreset);
+
+  // When a DM option is clicked, fill it into the input box
+  useEffect(() => {
+    if (inputPreset) {
+      setInput(inputPreset);
+      setInputPreset(null); // consume the preset
+    }
+  }, [inputPreset, setInputPreset]);
 
   if (stage !== 'PLAYING') return null;
 
