@@ -81,7 +81,15 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ pageType }) => {
         const node = currentData.nodes.find((n) => n.id === selectedElementId);
         if (!node) return;
         if (['label', 'position', 'type'].includes(field)) {
-          updateNode(selectedElementId, { [field]: value } as any);
+          // Item/Location: label change must also sync data.name so AI sees the real name
+          if (field === 'label' && (pageType === 'item' || pageType === 'location')) {
+            updateNode(selectedElementId, {
+              label: value,
+              data: { ...node.data, name: value },
+            } as any);
+          } else {
+            updateNode(selectedElementId, { [field]: value } as any);
+          }
         } else {
           // Character: name syncs to label
           if (pageType === 'character' && field === 'name') {

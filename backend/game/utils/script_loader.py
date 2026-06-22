@@ -6,6 +6,20 @@ the export.ts mapping table.
 
 from typing import Dict, Any, List, Optional
 
+# Placeholder values that indicate the user hasn't set a real name yet
+_NAME_PLACEHOLDERS = {"新物品", "新地点", "新位置", "未命名地点", "未命名"}
+
+
+def _resolve_name(data: dict, node: dict) -> str:
+    """Resolve the real entity name, treating placeholder data.name as empty."""
+    data_name = data.get("name", "")
+    label = node.get("label", "")
+    if data_name.strip() and data_name not in _NAME_PLACEHOLDERS:
+        return data_name
+    if label.strip() and label not in _NAME_PLACEHOLDERS:
+        return label
+    return data_name or label
+
 
 def load_script_data(script_json: dict) -> dict:
     """
@@ -152,10 +166,12 @@ def _parse_location_node(node: dict) -> dict:
     return {
         "id": node.get("id", ""),
         "label": node.get("label", ""),
-        "name": data.get("name", node.get("label", "")),
+        "name": _resolve_name(data, node),
         "description": data.get("description", ""),
         "atmosphere": data.get("atmosphere", ""),
         "terrain": data.get("terrain", ""),
+        "locationType": data.get("locationType", ""),
+        "sceneDescription": data.get("sceneDescription", ""),
     }
 
 
@@ -165,10 +181,17 @@ def _parse_item_node(node: dict) -> dict:
     return {
         "id": node.get("id", ""),
         "label": node.get("label", ""),
-        "name": data.get("name", node.get("label", "")),
+        "name": _resolve_name(data, node),
         "description": data.get("description", ""),
         "type": data.get("type", ""),
         "effects": data.get("effects", ""),
+        "function": data.get("function", ""),
+        "appearance": data.get("appearance", ""),
+        "acquisitionMethod": data.get("acquisitionMethod", ""),
+        "conditions": data.get("conditions", []),
+        "properties": data.get("properties", {}),
+        "unique": data.get("unique", False),
+        "initialLocation": data.get("initialLocation", ""),
     }
 
 

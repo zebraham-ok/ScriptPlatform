@@ -51,7 +51,17 @@ def build_dm_context(state: GameState) -> str:
         loc_lines = []
         for loc in locations[:5]:
             if isinstance(loc, dict):
-                loc_lines.append(f"  - {loc.get('name', '?')}: {loc.get('description', '')[:80]}")
+                name = loc.get("name", "?")
+                desc = loc.get("description", "")[:100]
+                terrain = loc.get("terrain", "")
+                atmosphere = loc.get("atmosphere", "")
+                extras = []
+                if terrain:
+                    extras.append(f"地貌：{terrain}")
+                if atmosphere:
+                    extras.append(f"氛围：{atmosphere}")
+                extra_str = f"（{'；'.join(extras)}）" if extras else ""
+                loc_lines.append(f"  - {name}：{desc}{extra_str}")
         if loc_lines:
             parts.append("地点：\n" + "\n".join(loc_lines))
 
@@ -63,7 +73,20 @@ def build_dm_context(state: GameState) -> str:
         item_lines = []
         for it in all_items[:10]:
             if isinstance(it, dict):
-                item_lines.append(f"  - {it.get('name', '?')}: {it.get('description', '')[:80]}")
+                name = it.get("name", "?")
+                desc = it.get("description", "")[:100]
+                func = it.get("function", "")
+                appearance = it.get("appearance", "")
+                acquisition = it.get("acquisitionMethod", "")
+                extras = []
+                if func:
+                    extras.append(f"功能：{func[:60]}")
+                if appearance:
+                    extras.append(f"外观：{appearance[:60]}")
+                if acquisition:
+                    extras.append(f"获得方式：{acquisition[:60]}")
+                extra_str = f"（{'；'.join(extras)}）" if extras else ""
+                item_lines.append(f"  - {name}：{desc}{extra_str}")
         if item_lines:
             parts.append("物品：\n" + "\n".join(item_lines))
 
