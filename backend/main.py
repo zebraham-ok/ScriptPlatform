@@ -8,8 +8,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.routing import Mount, Route
-from starlette.applications import Starlette
 from routers import projects, ai, auth, game
 from game.game_server import create_socketio_app
 
@@ -72,20 +70,16 @@ async def root():
 
 
 # ---- Composite ASGI app: FastAPI routes + Socket.IO at /socket.io ----
-# We wrap everything in a Starlette Router so that:
-#   - /socket.io/*  → Socket.IO ASGIApp (with FastAPI as fallback for static music)
-#   - /*             → FastAPI (all REST routes, health, music list, etc.)
-# This avoids the problem where app.mount("/", sio_app) swallows all requests.
+# Use socketio.ASGIApp directly as the main ASGI app (NO Starlette Router / Mount).
+# socketio.ASGIApp internally dispatches:
+#   - /socket.io/*  → Socket.IO engine
+#   - Everything else → other_asgi_app (FastAPI)
+# This avoids path-prefix-stripping issues caused by Starlette's Mount.
 
 sio_app = create_socketio_app(fastapi_app=app)
 
-composite_app = Starlette(routes=[
-    Mount("/socket.io", app=sio_app),  # Socket.IO must come FIRST
-    Mount("/", app=app),               # FastAPI handles everything else
-])
-
-# Replace the app reference so uvicorn serves the composite
-app = composite_app
+# Replace the app reference so uvicorn serves the ASGIApp directly
+app = sio_app
 
 
 if __name__ == "__main__":

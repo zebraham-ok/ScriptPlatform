@@ -7,6 +7,7 @@ import { useTTSPlayer } from '../../hooks/useTTSPlayer';
 const ChatPanel: React.FC = () => {
   const messages = useGameStore((s) => s.messages);
   const dmThinking = useGameStore((s) => s.dmThinking);
+  const stage = useGameStore((s) => s.stage);
   const playerId = useGameStore((s) => s.playerId);
   const ttsEnabled = useGameStore((s) => s.ttsEnabled);
   const toggleTTS = useGameStore((s) => s.toggleTTS);
@@ -233,9 +234,11 @@ const ChatPanel: React.FC = () => {
               <span className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <span className="text-xs text-amber-400/80">
-              {useGameStore.getState().diceResults.length > 0
-                ? '主持人正在处理检定结果...'
-                : '主持人正在思考中...'}
+              {stage === 'ROLE_SELECT'
+                ? '主持人正在翻剧本...'
+                : useGameStore.getState().diceResults.length > 0
+                  ? '主持人正在处理检定结果...'
+                  : '主持人正在思考中...'}
             </span>
           </div>
         )}

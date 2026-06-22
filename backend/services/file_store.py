@@ -108,6 +108,8 @@ def import_project(user_id: str, data: dict) -> ProjectData:
             "graph": {"nodes": [], "edges": []},
         }),
         "mechanics": data.get("mechanics", {"checks": [], "votes": []}),
+        "dmNotes": data.get("dmNotes", ""),
+        "bgm": data.get("bgm", ""),
         "aiConfig": data.get("aiConfig", None),
         "updatedAt": now,
     }

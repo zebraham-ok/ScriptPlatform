@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 
 const ActionInput: React.FC = () => {
@@ -9,12 +9,17 @@ const ActionInput: React.FC = () => {
   const roomInfo = useGameStore((s) => s.roomInfo);
   const inputPreset = useGameStore((s) => s.inputPreset);
   const setInputPreset = useGameStore((s) => s.setInputPreset);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // When a DM option is clicked, fill it into the input box
+  // When a DM option is clicked, fill it into the input box and focus
   useEffect(() => {
     if (inputPreset) {
       setInput(inputPreset);
       setInputPreset(null); // consume the preset
+      // Auto-focus the input so player can immediately press Enter or type
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 0);
     }
   }, [inputPreset, setInputPreset]);
 
@@ -37,6 +42,7 @@ const ActionInput: React.FC = () => {
     <div className="action-input-area">
       <div className="flex gap-2">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

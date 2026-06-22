@@ -484,9 +484,27 @@ async def select_role(sid: str, data: dict):
               f"has_custom_fields={has_custom_fields}, "
               f"customizableFields={selected_role.get('customizableAttributes') if selected_role else 'N/A'}")
         if not has_custom_fields:
+            # Initialize player attributes from script defaults
+            default_attrs = {}
+            char_attrs_map = room["state"].get("character_attributes", {})
+            if isinstance(char_attrs_map, dict):
+                default_attrs = dict(char_attrs_map.get(character_id, {}))
+            if sid in room["players"]:
+                room["players"][sid]["attributes"] = default_attrs
+            # Emit character_update so frontend CharacterSheet renders correctly
+            player_info = room["players"].get(sid, {})
+            await sio.emit("character_update", {
+                "playerId": player_info.get("playerId", sid),
+                "characterId": character_id,
+                "characterName": player_info.get("characterName", ""),
+                "attributes": default_attrs,
+                "inventory": player_info.get("inventory", []),
+            }, room=room_id)
+            print(f"[GameServer] select_role: initialized default attrs for {character_id[:8]}... "
+                  f"(no custom fields), keys={list(default_attrs.keys())[:6]}")
             # Auto-mark player as ready (no attribute form needed)
             await _auto_player_ready(sid, room, room_id)
-        # Check readiness (does NOT auto-transition; player_ready handles that)
+        # Check readiness
         await _check_role_select_complete(room_id)
 
 
@@ -602,20 +620,24 @@ async def submit_character_sheet(sid: str, data: dict):
         attributes[clean_key] = v
 
     player_info = room["players"].get(sid, {})
+    # Merge custom attributes with defaults from character_attributes
+    # (worldParams fixed values are in defaults; frontend only sends customizable ones)
+    char_attrs = dict(room["state"].get("character_attributes", {}))
+    default_attrs = dict(char_attrs.get(character_id, {}))
+    merged_attrs = {**default_attrs, **attributes}
     if sid in room["players"]:
-        room["players"][sid]["attributes"] = attributes
+        room["players"][sid]["attributes"] = merged_attrs
         room["players"][sid]["characterId"] = character_id
 
-    # Update state
-    char_attrs = dict(room["state"].get("character_attributes", {}))
-    char_attrs[character_id] = attributes
+    # Update state with merged attributes
+    char_attrs[character_id] = merged_attrs
     room["state"]["character_attributes"] = char_attrs
 
     await sio.emit("character_update", {
         "playerId": player_info.get("playerId", sid),
         "characterId": character_id,
         "characterName": player_info.get("characterName", ""),
-        "attributes": attributes,
+        "attributes": merged_attrs,
         "inventory": player_info.get("inventory", []),
     }, room=room_id)
 
@@ -817,9 +839,13 @@ async def start_game(sid: str, data: dict):
             "phase": "selecting",
         }, room=room_id)
 
-        # If AI opening was pending (timed out), generate it in background
-        # and emit as an updated chat message
-        if opening_pending and opening_prompt_data:
+        # Emit thinking indicator — DM is preparing the opening narration
+        if opening_prompt_data:
+            await sio.emit("dm_status", {"thinking": True, "status": "🎭 主持人正在翻剧本..."}, room=room_id)
+
+        # Always fire AI opening as background task immediately.
+        # Player sees role selection UI instantly; AI narration arrives when ready.
+        if opening_prompt_data:
             asyncio.create_task(
                 _retry_ai_opening_background(
                     room_id, room, new_state, opening_prompt_data
@@ -1688,6 +1714,7 @@ async def _retry_ai_opening_background(
         script_title = prompt_data.get("script_title", "")
         world_summary = prompt_data.get("world_summary", "")
         char_summary = prompt_data.get("char_summary", "")
+        player_identity = prompt_data.get("player_identity", "")
         loc_summary = prompt_data.get("loc_summary", "")
         plot_context = prompt_data.get("plot_context", "")
         scene_name = prompt_data.get("scene_name", "")
@@ -1701,6 +1728,7 @@ async def _retry_ai_opening_background(
                 script_title=script_title,
                 world_summary=world_summary,
                 char_summary=char_summary,
+                player_identity=player_identity,
                 loc_summary=loc_summary,
                 plot_context=plot_context,
                 scene_name=scene_name,
@@ -1744,8 +1772,13 @@ async def _retry_ai_opening_background(
             # TTS for background opening
             asyncio.create_task(_generate_tts_audio(room_id, ai_text, "dm"))
 
+            # Clear thinking indicator now that AI narration has arrived
+            await sio.emit("dm_status", {"thinking": False}, room=room_id)
+
             print(f"[GameServer] Background AI opening generated: {len(ai_text)} chars")
     except Exception as e:
+        # Clear thinking indicator on failure too
+        await sio.emit("dm_status", {"thinking": False}, room=room_id)
         print(f"[GameServer] Background AI opening failed: {e}")
 
 

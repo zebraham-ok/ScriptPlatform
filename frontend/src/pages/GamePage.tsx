@@ -217,8 +217,8 @@ const GamePage: React.FC = () => {
   // ---- Role Selection Modal (overlays the game UI) ----
   const renderRoleSelectionModal = () => {
     const roles = (roleDetails as RoleDetail[]) || [];
-    console.log('[GamePage] renderRoleSelectionModal: roleDetails length=', roles.length,
-      'roleDetails=', roles, 'availableRoles=', availableRoles);
+    // console.log('[GamePage] renderRoleSelectionModal: roleDetails length=', roles.length,
+    //   'roleDetails=', roles, 'availableRoles=', availableRoles);
     const currentPlayerId = playerId;
 
     const myAssignedRoleId = Object.entries(assignedRoles as Record<string, string> || {})

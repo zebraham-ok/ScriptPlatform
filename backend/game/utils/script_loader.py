@@ -96,11 +96,10 @@ def load_script_data(script_json: dict) -> dict:
                     cats = param.get("categories", [])
                     attrs[pname] = cats[0] if cats else ""
         # ⚠️ Also merge each character's own attributes (from worldParams parsed
-        #    by _parse_character_node). Without this, worldParams values
-        #    like "洞察值", "因果值" are not accessible to check_node.
+        #    by _parse_character_node). worldParams are per-character manual
+        #    settings and should OVERRIDE the generic midpoint defaults.
         for k, v in char.get("attributes", {}).items():
-            if k.strip() not in attrs:
-                attrs[k.strip()] = v
+            attrs[k.strip()] = v
         result["character_attributes"][char_id] = attrs
 
     # Locations
@@ -145,6 +144,7 @@ def _parse_character_node(node: dict) -> dict:
         "appearance": data.get("appearance", ""),
         "identity": data.get("identity", ""),
         "personality": data.get("personality", ""),
+        "motivation": data.get("motivation", ""),
         "is_playable": data.get("isPlayable", False),  # default False: only explicitly marked characters are playable
         "min_players": data.get("minPlayers", 0),
         "max_players": data.get("maxPlayers", 1),

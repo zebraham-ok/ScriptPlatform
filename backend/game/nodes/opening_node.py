@@ -9,7 +9,6 @@ Centralized pre-PLAYING processing:
 
 This node runs AFTER generate_node or json_load_node and BEFORE playing_node.
 """
-import asyncio
 import hashlib
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -85,17 +84,22 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
     # ========================================
     world_summary = _summarize_world(world_setting)
     char_summary = _summarize_characters(characters_data)
+    player_identity = _summarize_player_identities(characters_data)
     loc_summary = _summarize_locations(locations_data)
 
     # Build plot context
     plot_context = ""
+    # ── Preset DM notes (from editor "主持人笔记" module, highest priority) ──
+    preset_dm_notes = state.get("dm_notes", "")
+    if preset_dm_notes:
+        plot_context += f"**【预设主持人笔记】**：{preset_dm_notes[:300]}\n"
     if isinstance(plot_inspection, dict):
         story_goal = plot_inspection.get("story_goal", "")
         dm_notes = plot_inspection.get("dm_notes", "")
         if story_goal:
             plot_context += f"故事目标：{story_goal}\n"
         if dm_notes:
-            plot_context += f"DM备注：{dm_notes[:200]}\n"
+            plot_context += f"DM备注（自动摘要）：{dm_notes[:200]}\n"
 
     # ── Extract initial checkpoint node rich data ──
     initial_node_context = _build_initial_node_context(
@@ -109,68 +113,16 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         script_title, world_summary, display_scene_name, raw_scene_desc
     )
 
-    # Try AI with a short timeout so stage transition isn't blocked.
-    # Two separate calls run in parallel: (1) opening narration, (2) summaries.
+    # AI generation is always deferred to background (async fire-and-forget).
+    # This way the player gets the role selection screen immediately,
+    # and the AI narration arrives as soon as it's ready — no waiting.
     opening_text = fallback_text
     opening_options: list = []
-    opening_pending = False
+    opening_pending = True if has_roles else False
     world_summary_gen = ""
     plot_summary_gen = ""
-    try:
-        async def _safe_gen_opening():
-            try:
-                return await asyncio.wait_for(
-                    _generate_ai_opening_text(
-                        script_title=script_title,
-                        world_summary=world_summary,
-                        char_summary=char_summary,
-                        loc_summary=loc_summary,
-                        plot_context=plot_context,
-                        scene_name=display_scene_name,
-                        raw_scene_desc=raw_scene_desc,
-                        initial_node_context=initial_node_context,
-                    ),
-                    timeout=8.0,  # increased from 4s to accommodate longer output (1500 tokens)
-                )
-            except Exception:
-                return None
-
-        async def _safe_gen_summaries():
-            try:
-                return await asyncio.wait_for(
-                    _generate_ai_summaries(
-                        script_title=script_title,
-                        world_summary=world_summary,
-                        loc_summary=loc_summary,
-                        plot_context=plot_context,
-                        initial_node_context=initial_node_context,
-                        story_overview=story_overview,
-                    ),
-                    timeout=5.0,
-                )
-            except Exception:
-                return None
-
-        opening_result, summaries_result = await asyncio.gather(
-            _safe_gen_opening(),
-            _safe_gen_summaries(),
-        )
-
-        if opening_result:
-            opening_text, opening_options = opening_result
-        else:
-            if has_roles:
-                opening_pending = True
-
-        if summaries_result:
-            world_summary_gen = summaries_result.get("world_summary", "")
-            plot_summary_gen = summaries_result.get("plot_summary", "")
-
-    except Exception as e:
-        print(f"[opening_node] AI generation failed: {e}, using fallback")
-        opening_text = fallback_text
-        if has_roles:
-            opening_pending = True
+    print(f"[opening_node] AI generation deferred to background "
+          f"(has_roles={has_roles}, pending={opening_pending})")
 
     updates["scene"] = display_scene_name
     updates["scene_description"] = raw_scene_desc or opening_text
@@ -184,13 +136,14 @@ async def opening_node(state: GameState) -> Dict[str, Any]:
         "script_title": script_title,
         "world_summary": world_summary,
         "char_summary": char_summary,
+        "player_identity": player_identity,
         "loc_summary": loc_summary,
         "plot_context": plot_context,
         "scene_name": display_scene_name,
         "raw_scene_desc": raw_scene_desc,
         "initial_node_context": initial_node_context,
         "story_overview": story_overview,
-    } if opening_pending else None
+    }  # always stored — background AI task reads this
     updates["_scene_image_prompt"] = _build_image_prompt(
         display_scene_name, raw_scene_desc, script_title, plot_graph,
         current_node_id, characters_data, locations_data
@@ -376,15 +329,55 @@ def _summarize_characters(characters_data: list) -> str:
             desc = c.get("description", "")
             ident = c.get("identity", "")
             appearance = c.get("appearance", "")
+            personality = c.get("personality", "")
+            motivation = c.get("motivation", "")
             line = f"- {name}"
             if ident:
                 line += f"（{ident}）"
             if desc:
                 line += f"：{desc[:80]}"
+            if personality:
+                line += f" [性格：{personality[:60]}]"
             if appearance:
                 line += f" [外貌：{appearance[:60]}]"
+            if motivation:
+                line += f" [动机：{motivation[:80]}]"
             lines.append(line)
     return "\n".join(lines) if lines else ""
+
+
+def _summarize_player_identities(characters_data: list) -> str:
+    """Build a player character identity section specifically for opening narration.
+    
+    Only includes playable characters, with rich identity info so the DM AI
+    knows who the player(s) are embodying.
+    """
+    if not characters_data:
+        return ""
+    playable = [c for c in characters_data if isinstance(c, dict) and c.get("is_playable")]
+    if not playable:
+        return ""
+    lines = []
+    for c in playable:
+        name = c.get("name", "无名")
+        ident = c.get("identity", "")
+        desc = c.get("description", "")
+        personality = c.get("personality", "")
+        motivation = c.get("motivation", "")
+        parts = [f"**{name}**"]
+        if ident:
+            parts.append(f"身份：{ident}")
+        if desc:
+            parts.append(f"简介：{desc}")
+        if personality:
+            parts.append(f"性格：{personality}")
+        if motivation:
+            parts.append(f"背景/动机：{motivation}")
+        lines.append("  " + "；".join(parts))
+    if not lines:
+        return ""
+    header = '**玩家扮演角色（请将玩家身份自然融入开场叙述，不要直接列出"可选角色"）**：'
+    return header + "\n" + "\n".join(lines)
 
 
 def _summarize_locations(locations_data: list) -> str:
@@ -678,16 +671,22 @@ async def _generate_ai_opening_text(
     plot_context: str,
     scene_name: str,
     raw_scene_desc: str,
+    player_identity: str = "",
     initial_node_context: str = "",
 ) -> tuple[str | None, list[str]]:
     """Generate opening narration + options. Returns (narration_or_None, options_list)."""
-    char_context = f"\n\n**场上人物（仅供背景参考，不要在开场白中列出可选角色）**：\n{char_summary}" if char_summary else ""
+    char_context = f"\n\n**场上其它人物（仅供背景参考）**：\n{char_summary}" if char_summary else ""
+
+    player_section = ""
+    if player_identity:
+        player_section = f"""
+
+{player_identity}"""
 
     node_section = ""
     if initial_node_context:
         node_section = f"""
 ---
-
 **📍 起始节点详细信息**：
 {initial_node_context}
 """
@@ -695,7 +694,8 @@ async def _generate_ai_opening_text(
     prompt = f"""你是一个专业的跑团/剧本杀 DM（主持人）。请为以下剧本写一个开场白。
 
 ---
-
+{node_section}
+---
 **剧本标题**：{script_title}
 
 **世界观**：
@@ -704,33 +704,38 @@ async def _generate_ai_opening_text(
 **当前场景**：{scene_name}
 
 **场景描述**：
-{raw_scene_desc or "场景尚未详细描述"}{char_context}
+{raw_scene_desc or "场景尚未详细描述"}{player_section}{char_context}
 
 **地点**：
 {loc_summary or "（暂无地点）"}
 
 **剧情上下文**：
 {plot_context or "（自由探索）"}
-{node_section}
+
 ---
 
-要求：
-1. 用生动、沉浸式的语言营造氛围，仅开场而不是推进剧情。
-2. 简要引入世界观，但请注意不要告诉玩家他此刻不应该知道的信息。
-3. 根据"起始节点详细信息"中的场景描述和玩家可选行动，自然地引导玩家进入剧情
-4. 描述当前场景，给予玩家自然的行动引导
-5. 长度控制在 300 字以内
-6. 重要：不要出现"可扮演角色""可选角色""角色列表"等内容，角色选择已在专门页面完成
+【核心要求】
+1. **开场白必须以"起始节点详细信息"中的场景描述为核心展开**，严格还原其中的场景设定、氛围和情节起点。不要偏离或自行发挥新的场景设定。
+2. **严格遵循"预设主持人笔记"中的指导**：如果剧情上下文中包含"预设主持人笔记"，其中关于开场氛围、误导方向、信息控制、节奏把控等指导必须严格遵守。
+3. 用生动、沉浸式的语言营造氛围。
+4. **开场白必须从玩家角色的视角出发**：根据"玩家扮演角色"的身份、背景和动机信息，自然地将玩家带入其所扮演的角色处境中。叙述中可以使用"你"或"你们"来称呼玩家。
+5. 如果起始节点有"玩家可选行动"或"预置行动映射"，请围绕这些行动方向来描写场景，让玩家自然产生对应的行动意图。
+6. 长度控制在 300 字以内
+7. **重要**：不要出现"可扮演角色""可选角色""角色列表"等元信息，角色选择已在专门页面完成
 
 输出格式：
+##FORBIDS##
+请先分析：在开场白中，哪些信息、伏笔、秘密和未来剧情发展是绝对不能告诉玩家的。
+列出3-5条核心禁忌，并说明为什么此刻不能透露。这部分仅供内部审核使用，不会发送给玩家。
+
 ##NARRATION##
-（你的开场白正文，仅开场叙述，不要推进剧情）
+（你的开场白正文）
 
 ##OPTIONS##
 - 玩家可以选择的行动方向1（简短，5-15字）
 - 玩家可以选择的行动方向2
 - 玩家可以选择的行动方向3
-（给出2-3个自然的行动选择，引导玩家进入游戏，选项要简短清晰）"""
+（给出2-3个自然的行动选择，优先从起始节点的"可选行动"或"预置行动"中提炼，选项要简短清晰）"""
 
     raw = await _call_ai_text(prompt, "opening narration", max_tokens=6000, temperature=0.8)
     if not raw:
@@ -748,12 +753,27 @@ async def _generate_ai_opening_text(
 
 
 def _parse_opening_response(raw: str) -> tuple[str | None, list[str]]:
-    """Parse AI opening response: separate narration from options.
-    Handles both formatted (##NARRATION## / ##OPTIONS##) and unformatted responses."""
+    """Parse AI opening response: separate forbids, narration and options.
+    Handles formatted (##FORBIDS## / ##NARRATION## / ##OPTIONS##) and unformatted responses.
+    
+    ##FORBIDS## content is printed to backend logs only, NEVER sent to frontend.
+    """
     import re
 
     narration: str | None = None
     options: list[str] = []
+
+    # Extract ##FORBIDS## block — backend log only, never sent to players
+    forbids_match = re.search(
+        r'##FORBIDS##\s*([\s\S]*?)(?=##NARRATION##|##OPTIONS##|$)',
+        raw, re.IGNORECASE,
+    )
+    if forbids_match:
+        forbids_text = forbids_match.group(1).strip()
+        if forbids_text:
+            print(f"[opening_node] ===== ##FORBIDS## (backend audit only) =====")
+            print(forbids_text)
+            print(f"[opening_node] ===== END FORBIDS =====")
 
     # Try to extract ##NARRATION## block
     narr_match = re.search(
@@ -773,11 +793,17 @@ def _parse_opening_response(raw: str) -> tuple[str | None, list[str]]:
         options = _clean_opening_options(opts_text)
 
     # If no narration block found, use everything before ##OPTIONS## or the whole text
+    # (but exclude ##FORBIDS## block content)
     if not narration:
+        # Strip ##FORBIDS## block if present before fallback extraction
+        clean_raw = re.sub(
+            r'##FORBIDS##\s*[\s\S]*?(?=##NARRATION##|##OPTIONS##|$)',
+            '', raw, flags=re.IGNORECASE,
+        ).strip()
         if opts_match:
-            narration = raw[:opts_match.start()].strip()
+            narration = clean_raw[:clean_raw.find('##OPTIONS##')].strip()
         else:
-            narration = raw.strip()
+            narration = clean_raw.strip()
 
     if not narration:
         narration = None
@@ -832,6 +858,8 @@ async def _generate_ai_summaries(
     prompt = f"""你是一个剧本分析专家。请为以下剧本生成世界观摘要和情节总览摘要。
 
 ---
+{node_section}
+---
 
 **剧本标题**：{script_title}
 
@@ -843,13 +871,13 @@ async def _generate_ai_summaries(
 
 **剧情上下文**：
 {plot_context or "（自由探索）"}
-{node_section}{overview_section}
+{overview_section}
 ---
 
 请严格按以下JSON格式输出（不要任何解释，只输出JSON）：
 {{
     "world_summary": "凝练的世界观摘要（200-400字，概括世界观关键设定、核心规则、重要背景）",
-    "plot_summary": "凝练的情节总览摘要（200-400字，概括主线剧情走向、关键节点、核心冲突、伏笔和结局方向）"
+    "plot_summary": "凝练的情节总览摘要（200-400字，概括主线剧情走向、关键节点、核心冲突、伏笔和结局方向，必须包含起始节点的场景设定作为情节起点）"
 }}"""
 
     return await _call_ai_json(prompt, "summaries", max_tokens=1200, temperature=0.7)
